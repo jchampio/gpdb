@@ -352,27 +352,39 @@ typedef PageHeaderData *PageHeader;
 	  / sizeof(ItemIdData)))
 
 /*
- * Additional macros for access to page headers
- *
  * Retrieving LSN of a shared buffer is safe only if: (1) exclusive lock on the
  * buffer's contents is held OR (2) shared lock on the buffer's contents and
- * the buffer header spinlock is held.  The AssertMacro() validates that a
- * shared buffer's contents are locked.  That is not sufficient but there is no
- * easy interface to determine if a spinlock is held or whether a LW lock is
- * held in shared/exclusive mode.  The assert applies only to shared buffers
- * because local buffers do not need to worry about concurrency.
+ * the buffer header spinlock is held.  The Assert() validates that a shared
+ * buffer's contents are locked.  That is not sufficient but there is no easy
+ * interface to determine if a spinlock is held or whether a LW lock is held in
+ * shared/exclusive mode.  The assert applies only to shared buffers because
+ * local buffers do not need to worry about concurrency.
  *
  */
-#define PageGetLSN(page) \
-	( \
-		AssertMacro(((char *)(page)) < BufferBlocks || \
-					(BufferBlocks + NBuffers * BLCKSZ) <= ((char *)(page)) || \
-					LWLockHeldByMe( \
-						BufferDescriptors[ \
-							(((char *)(page)) - BufferBlocks) / BLCKSZ \
-							].content_lock)), \
-		((PageHeader) (page))->pd_lsn \
-	)
+static inline XLogRecPtr
+PageGetLSN(Page page)
+{
+#ifdef USE_ASSERT_CHECKING
+	char *pagePtr = page;
+
+	/*
+	 * We only want to assert that we hold a lock on the page contents if the
+	 * page is shared (i.e. it is one of the BufferBlocks).
+	 */
+	if (BufferBlocks <= pagePtr &&
+		pagePtr < (BufferBlocks + NBuffers * BLCKSZ))
+	{
+		BufferDesc *hdr = &BufferDescriptors[(pagePtr - BufferBlocks) / BLCKSZ];
+		Assert(LWLockHeldByMe(hdr->content_lock));
+	}
+#endif
+
+	return ((PageHeader) page)->pd_lsn;
+}
+
+/*
+ * Additional macros for access to page headers
+ */
 #define PageSetLSN(page, lsn) \
 	(((PageHeader) (page))->pd_lsn = (lsn))
 
