@@ -365,6 +365,7 @@ static inline XLogRecPtr
 PageGetLSN(Page page)
 {
 #ifdef USE_ASSERT_CHECKING
+	extern PGDLLIMPORT char *BufferBlocks; /* duplicates bufmgr.h */
 	char *pagePtr = page;
 
 	/*
