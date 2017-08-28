@@ -366,7 +366,7 @@ typedef PageHeaderData *PageHeader;
 #define PageGetLSN(page) \
 	( \
 		AssertMacro(((char *)(page)) < BufferBlocks || \
-					(BufferBlocks + NBuffers * BLCKSZ) > ((char *)(page)) || \
+					(BufferBlocks + NBuffers * BLCKSZ) <= ((char *)(page)) || \
 					LWLockHeldByMe( \
 						BufferDescriptors[ \
 							(((char *)(page)) - BufferBlocks) / BLCKSZ \
