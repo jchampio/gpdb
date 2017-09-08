@@ -369,6 +369,9 @@ extern int	gp_filerep_ct_batch_size;
 
 extern int  WalSendClientTimeout;
 
+#define GP_REPLICATION_CONFIG_FILENAME "gp_replication.conf"
+extern char  *gp_replication_config_filename;
+
 extern char  *data_directory;
 
 /* ORCA related definitions */
@@ -658,6 +661,8 @@ extern int	GUC_complaint_elevel(GucSource source);
 extern void pg_timezone_abbrev_initialize(void);
 
 extern char *gp_guc_list_show(GucSource excluding, List *guclist);
+
+extern bool gp_select_config_files(const char *configdir, const char *progname);
 
 extern struct config_generic *find_option(const char *name,
 				bool create_placeholders, int elevel);
