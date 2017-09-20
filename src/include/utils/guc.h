@@ -361,7 +361,6 @@ extern char *application_name;
 extern char *Debug_dtm_action_sql_command_tag;
 extern char *Debug_dtm_action_str;
 extern char *Debug_dtm_action_target_str;
-extern char *Debug_dtm_action_protocol_str;
 
 /* Enable check for compatibility of encoding and locale in createdb */
 extern bool gp_encoding_check_locale_compatibility;
@@ -507,6 +506,7 @@ extern bool optimizer_analyze_midlevel_partition;
 /**
  * GUCs related to code generation.
  **/
+#define CODEGEN_OPTIMIZATION_LEVEL_UNSET         -1
 #define CODEGEN_OPTIMIZATION_LEVEL_NONE          0
 #define CODEGEN_OPTIMIZATION_LEVEL_LESS          1
 #define CODEGEN_OPTIMIZATION_LEVEL_DEFAULT       2
