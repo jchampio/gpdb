@@ -506,7 +506,6 @@ extern bool optimizer_analyze_midlevel_partition;
 /**
  * GUCs related to code generation.
  **/
-#define CODEGEN_OPTIMIZATION_LEVEL_UNSET         -1
 #define CODEGEN_OPTIMIZATION_LEVEL_NONE          0
 #define CODEGEN_OPTIMIZATION_LEVEL_LESS          1
 #define CODEGEN_OPTIMIZATION_LEVEL_DEFAULT       2

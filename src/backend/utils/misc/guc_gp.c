@@ -586,16 +586,6 @@ static const struct config_enum_entry optimizer_log_failure_options[] = {
 };
 
 static const struct config_enum_entry codegen_optimization_level_options[] = {
-	/*
-	 * GPDB_84_MERGE_FIXME
-	 *
-	 * We've introduced this "unset" value to handle the case where USE_CODEGEN
-	 * is not set. Revisit: do we really want to do this?
-	 *
-	 * If we choose to keep it, we should eventually mark it as hidden, but the
-	 * hidden field will be added later in REL8_4_STABLE.
-	 */
-	{"", CODEGEN_OPTIMIZATION_LEVEL_UNSET},
 	{"none", CODEGEN_OPTIMIZATION_LEVEL_NONE},
 	{"less", CODEGEN_OPTIMIZATION_LEVEL_LESS},
 	{"default", CODEGEN_OPTIMIZATION_LEVEL_DEFAULT},
@@ -5523,7 +5513,7 @@ struct config_enum ConfigureNamesEnum_gp[] =
 #ifdef USE_CODEGEN
 		CODEGEN_OPTIMIZATION_LEVEL_DEFAULT,
 #else
-		CODEGEN_OPTIMIZATION_LEVEL_UNSET,
+		CODEGEN_OPTIMIZATION_LEVEL_NONE,
 #endif
 		codegen_optimization_level_options, assign_codegen_optimization_level, NULL
 	},
@@ -5617,7 +5607,7 @@ assign_pljava_classpath_insecure(bool newval, bool doit, GucSource source)
 static bool
 assign_codegen_optimization_level(int val, bool assign, GucSource source) {
 #ifndef USE_CODEGEN
-	if (val != CODEGEN_OPTIMIZATION_LEVEL_UNSET)
+	if (val != CODEGEN_OPTIMIZATION_LEVEL_NONE)
 	{
 		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
