@@ -84,8 +84,6 @@ extern const char *gpvars_assign_gp_resqueue_priority_default_value(const char *
 												 bool doit,
 								   GucSource source __attribute__((unused)));
 
-static const char *assign_password_hash_algorithm(const char *newval,
-							   bool doit, GucSource source);
 static const char *assign_gp_default_storage_options(
 							const char *newval, bool doit, GucSource source);
 
@@ -380,8 +378,7 @@ char	   *gp_hadoop_home;
 char	   *gp_auth_time_override_str = NULL;
 
 /* Password hashing */
-char	   *password_hash_algorithm_str = "MD5";
-PasswdHashAlg password_hash_algorithm = PASSWORD_HASH_MD5;
+int			password_hash_algorithm = PASSWORD_HASH_MD5;
 
 /* system cache invalidation mode*/
 int			gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
@@ -652,6 +649,13 @@ static const struct config_enum_entry debug_dtm_action_target_options[] = {
 static const struct config_enum_entry gp_workfile_type_hashjoin_options[] = {
 	{"bfz", BFZ},
 	{"buffile", BUFFILE},
+	{NULL, 0}
+};
+
+static const struct config_enum_entry password_hash_algorithm_options[] = {
+	/* {"none", PASSWORD_HASH_NONE}, * this option is not exposed */
+	{"MD5", PASSWORD_HASH_MD5},
+	{"SHA-256", PASSWORD_HASH_SHA_256},
 	{NULL, 0}
 };
 
@@ -5339,17 +5343,6 @@ struct config_string ConfigureNamesString_gp[] =
 	},
 
 	{
-		{"password_hash_algorithm", PGC_SUSET, CONN_AUTH_SECURITY,
-			gettext_noop("The cryptograph hash algorithm to apply to passwords before storing them."),
-			gettext_noop("Valid values are MD5 or SHA-256."),
-			GUC_SUPERUSER_ONLY
-		},
-		&password_hash_algorithm_str,
-		"MD5", assign_password_hash_algorithm, NULL
-	},
-
-
-	{
 		{"optimizer_search_strategy_path", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the search strategy used by gp optimizer."),
 			NULL,
@@ -5511,6 +5504,16 @@ struct config_enum ConfigureNamesEnum_gp[] =
 	},
 
 	{
+		{"password_hash_algorithm", PGC_SUSET, CONN_AUTH_SECURITY,
+			gettext_noop("The cryptograph hash algorithm to apply to passwords before storing them."),
+			gettext_noop("Valid values are MD5 or SHA-256."),
+			GUC_SUPERUSER_ONLY
+		},
+		&password_hash_algorithm,
+		PASSWORD_HASH_MD5, password_hash_algorithm_options, NULL, NULL
+	},
+
+	{
 		{"codegen_optimization_level", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets optimizer level to use when compiling generated code."),
 			gettext_noop("Valid values are none, less, default, aggressive."),
@@ -5643,25 +5646,6 @@ assign_optimizer_minidump(const char *val, bool assign, GucSource source)
 	}
 
 	return val;
-}
-
-static const char *
-assign_password_hash_algorithm(const char *newval, bool doit, GucSource source)
-{
-	if (pg_strcasecmp(newval, "MD5") == 0)
-	{
-		if (doit)
-			password_hash_algorithm = PASSWORD_HASH_MD5;
-	}
-	else if (pg_strcasecmp(newval, "SHA-256") == 0)
-	{
-		if (doit)
-			password_hash_algorithm = PASSWORD_HASH_SHA_256;
-	}
-	else
-		return NULL;
-
-	return newval;
 }
 
 static const char *
