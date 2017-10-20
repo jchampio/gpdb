@@ -598,7 +598,7 @@ tuplestore_puttupleslot(Tuplestorestate *state,
 	/*
 	 * Form a MemTuple in working memory
 	 */
-	tuple = ExecCopySlotMemTuple(slot);
+	tuple = ExecCopySlotMemTuple(slot, false);
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
 	tuplestore_puttuple_common(state, (void *) tuple);

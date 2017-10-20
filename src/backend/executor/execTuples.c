@@ -635,7 +635,7 @@ ExecCopySlotHeapTuple(TupleTableSlot *slot)
  *			The slot itself is undisturbed.
  * --------------------------------
  */
-MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot)
+MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot, bool inline_toast)
 {
 	/*
 	 * sanity checks
@@ -644,10 +644,11 @@ MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot)
 	Assert(slot->tts_mt_bind);
 
 	/*
-	 * If we have a physical tuple then just copy it.  Prefer to copy
-	 * tts_mintuple since that's a tad cheaper.
+	 * If we have a physical tuple and don't need to detoast it then just copy
+	 * it.  Prefer to copy tts_mintuple since that's a tad cheaper.
 	 */
-	if (slot->PRIVATE_tts_memtuple)
+	if (slot->PRIVATE_tts_memtuple &&
+			(!inline_toast || !memtuple_get_hasext(slot->PRIVATE_tts_memtuple)))
 		return memtuple_copy_to(slot->PRIVATE_tts_memtuple, NULL, NULL);
 	
 	slot_getallattrs(slot);
@@ -655,7 +656,8 @@ MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot)
 	/*
 	 * Otherwise we need to build a tuple from the Datum array.
 	 */
-	return memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), NULL, 0, false);
+	return memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot),
+							slot_get_isnull(slot), NULL, 0, inline_toast);
 }
 
 MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char *dest, unsigned int *len)

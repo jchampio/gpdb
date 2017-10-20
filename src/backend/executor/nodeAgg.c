@@ -1294,7 +1294,7 @@ agg_retrieve_direct(AggState *aggstate)
 						{
 							/* We've crossed a group boundary. */
 							/* Make a copy of the first tuple for the new group. */
-							aggstate->grp_firstTuple = ExecCopySlotMemTuple(outerslot);
+							aggstate->grp_firstTuple = ExecCopySlotMemTuple(outerslot, false);
 							aggstate->has_partial_agg = false;
 							break;
 						}

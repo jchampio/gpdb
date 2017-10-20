@@ -3163,14 +3163,18 @@ ExecInsert(TupleTableSlot *slot,
 	rel_is_aorows = RelationIsAoRows(resultRelationDesc);
 	rel_is_external = RelationIsExternal(resultRelationDesc);
 
+	/*
+	 * get the heap tuple out of the tuple table slot, making sure we have a
+	 * writable copy
+	 */
 	partslot = reconstructMatchingTupleSlot(slot, resultRelInfo);
 	if (rel_is_heap)
 	{
-		tuple = ExecFetchSlotHeapTuple(partslot);
+		tuple = ExecCopySlotHeapTuple(partslot);
 	}
 	else if (rel_is_aorows)
 	{
-		tuple = ExecFetchSlotMemTuple(partslot, false);
+		tuple = ExecCopySlotMemTuple(partslot, false);
 	}
 	else if (rel_is_external) 
 	{
@@ -3194,7 +3198,7 @@ ExecInsert(TupleTableSlot *slot,
 	else
 	{
 		Assert(rel_is_aocols);
-		tuple = ExecFetchSlotMemTuple(partslot, true);
+		tuple = ExecCopySlotMemTuple(partslot, true);
 	}
 
 	Assert(partslot != NULL && tuple != NULL);
@@ -5076,7 +5080,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 	if (RelationIsAoRows(into_rel))
 	{
-		MemTuple	tuple = ExecCopySlotMemTuple(slot);
+		MemTuple	tuple = ExecCopySlotMemTuple(slot, false);
 		Oid			tupleOid;
 		AOTupleId	aoTupleId;
 

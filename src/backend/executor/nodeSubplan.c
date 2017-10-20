@@ -333,7 +333,7 @@ ExecScanSubPlan(SubPlanState *node,
 
 			if (node->curTuple)
 				pfree(node->curTuple);
-			node->curTuple = ExecCopySlotMemTuple(slot);
+			node->curTuple = ExecCopySlotMemTuple(slot, false);
 
 			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
@@ -1090,7 +1090,7 @@ PG_TRY();
 		 */
 		if (node->curTuple)
 			pfree(node->curTuple);
-		node->curTuple = ExecCopySlotMemTuple(slot);
+		node->curTuple = ExecCopySlotMemTuple(slot, false);
 
 		/*
 		 * Now set all the setParam params from the columns of the tuple

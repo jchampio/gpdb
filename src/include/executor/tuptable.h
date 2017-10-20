@@ -394,7 +394,7 @@ extern TupleTableSlot *ExecStoreVirtualTuple(TupleTableSlot *slot);
 extern TupleTableSlot *ExecStoreAllNullTuple(TupleTableSlot *slot);
 
 extern HeapTuple ExecCopySlotHeapTuple(TupleTableSlot *slot);
-extern MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot);
+extern MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot, bool inline_toast);
 extern MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char *dest, unsigned int *len);
 
 extern HeapTuple ExecFetchSlotHeapTuple(TupleTableSlot *slot);
@@ -424,7 +424,7 @@ static inline HeapTuple ExecCopyGenericTuple(TupleTableSlot *slot)
 	Assert(!TupIsNull(slot));
 	if(slot->PRIVATE_tts_heaptuple != NULL && slot->PRIVATE_tts_memtuple == NULL)
 		return ExecCopySlotHeapTuple(slot);
-	return (HeapTuple) ExecCopySlotMemTuple(slot);
+	return (HeapTuple) ExecCopySlotMemTuple(slot, false);
 }
 
 extern TupleTableSlot *ExecCopySlot(TupleTableSlot *dstslot, TupleTableSlot *srcslot);

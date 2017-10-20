@@ -402,7 +402,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 
 			/* Copy the first tuple into the table context */
 			MemoryContextSwitchTo(hashtable->tablecxt);
-			entry->firstTuple = ExecCopySlotMemTuple(slot);
+			entry->firstTuple = ExecCopySlotMemTuple(slot, false);
 
 			*isnew = true;
 		}
