@@ -319,9 +319,9 @@ XLogReadBuffer(RelFileNode rnode, BlockNumber blkno, bool init)
 	 * filesystem loses an inode during a crash.  Better to write the data
 	 * until we are actually told to delete the file.)
 	 */
-	/* GPDB_84_MERGE_FIXME: this block of code (brought over from
-	 * XLogOpenRelation) was marked to be removed.  Can we? Is it related to
-	 * filerep? */
+	/* GPDB_84_MERGE_FIXME: this block of code must be updated to deal with AO
+	 * tables. It can be reverted to upstream's implementation after filerep is
+	 * removed from the codebase. */
 	// UNDONE: Can't remove this block of code yet until boot time calls to this routine are analyzed...
 	{
 		MirrorDataLossTrackingState mirrorDataLossTrackingState;
