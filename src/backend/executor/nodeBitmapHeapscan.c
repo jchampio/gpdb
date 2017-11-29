@@ -219,7 +219,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			if (tbm == NULL)
 				more = false;
 			else
-				more = tbm_iterate(tbm, tbmres);
+				more = tbm_generic_iterate(tbm, tbmres);
 
 			if (!more)
 			{

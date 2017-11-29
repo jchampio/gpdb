@@ -171,7 +171,7 @@ extern void tbm_intersect(TIDBitmap *a, const TIDBitmap *b);
 extern bool tbm_is_empty(const TIDBitmap *tbm);
 
 extern void tbm_begin_iterate(TIDBitmap *tbm);
-extern bool tbm_iterate(Node *tbm, TBMIterateResult *output);
+extern bool tbm_iterate(TIDBitmap *tbm, TBMIterateResult *output);
 
 extern void stream_move_node(StreamBitmap *strm, StreamBitmap *other, StreamType kind);
 extern void stream_add_node(StreamBitmap *strm, StreamNode *node, StreamType kind);
@@ -179,9 +179,10 @@ extern StreamNode *tbm_create_stream_node(TIDBitmap *tbm);
 extern bool bitmap_stream_iterate(StreamNode *n, PagetableEntry *e);
 
 /* These functions accept either a TIDBitmap or a StreamBitmap... */
-extern void tbm_bitmap_free(Node *bm);
-extern void tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr);
-extern void tbm_bitmap_upd_instrument(Node *bm);
+extern bool tbm_generic_iterate(Node *tbm, TBMIterateResult *output);
+extern void tbm_generic_free(Node *bm);
+extern void tbm_generic_set_instrument(Node *bm, struct Instrumentation *instr);
+extern void tbm_generic_upd_instrument(Node *bm);
 
 extern void tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid);
 
