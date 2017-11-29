@@ -107,9 +107,9 @@ typedef struct PagetableEntry
 
 /*
  * Actual bitmap representation is private to tidbitmap.c.	Callers can
- * do IsA(x, HashBitmap) on it, but nothing else.
+ * do IsA(x, TIDBitmap) on it, but nothing else.
  */
-typedef struct HashBitmap HashBitmap;
+typedef struct TIDBitmap TIDBitmap;
 
 /*
  * Stream bitmap representation.
@@ -160,25 +160,25 @@ typedef struct
 } TBMIterateResult;				/* VARIABLE LENGTH STRUCT */
 
 /* function prototypes in nodes/tidbitmap.c */
-extern HashBitmap *tbm_create(long maxbytes);
-extern void tbm_free(HashBitmap *tbm);
+extern TIDBitmap *tbm_create(long maxbytes);
+extern void tbm_free(TIDBitmap *tbm);
 
-extern void tbm_add_tuples(HashBitmap *tbm,
+extern void tbm_add_tuples(TIDBitmap *tbm,
 						   const ItemPointer tids, int ntids,
 						   bool recheck);
-extern void tbm_union(HashBitmap *a, const HashBitmap *b);
-extern void tbm_intersect(HashBitmap *a, const HashBitmap *b);
-extern bool tbm_is_empty(const HashBitmap *tbm);
+extern void tbm_union(TIDBitmap *a, const TIDBitmap *b);
+extern void tbm_intersect(TIDBitmap *a, const TIDBitmap *b);
+extern bool tbm_is_empty(const TIDBitmap *tbm);
 
-extern void tbm_begin_iterate(HashBitmap *tbm);
+extern void tbm_begin_iterate(TIDBitmap *tbm);
 extern bool tbm_iterate(Node *tbm, TBMIterateResult *output);
 
 extern void stream_move_node(StreamBitmap *strm, StreamBitmap *other, StreamType kind);
 extern void stream_add_node(StreamBitmap *strm, StreamNode *node, StreamType kind);
-extern StreamNode *tbm_create_stream_node(HashBitmap *tbm);
+extern StreamNode *tbm_create_stream_node(TIDBitmap *tbm);
 extern bool bitmap_stream_iterate(StreamNode *n, PagetableEntry *e);
 
-/* These functions accept either a HashBitmap or a StreamBitmap... */
+/* These functions accept either a TIDBitmap or a StreamBitmap... */
 extern void tbm_bitmap_free(Node *bm);
 extern void tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr);
 extern void tbm_bitmap_upd_instrument(Node *bm);
