@@ -43,8 +43,8 @@
 #define BITNUM(x)	((x) % TBM_BITS_PER_BITMAPWORD)
 
 static bool tbm_iterate_page(PagetableEntry *page, TBMIterateResult *output);
-static bool tbm_iterate_hash(TIDBitmap *tbm, TBMIterateResult *output);
 static PagetableEntry *tbm_next_page(TIDBitmap *tbm, bool *more);
+static void tbm_upd_instrument(TIDBitmap *tbm);
 
 /*
  * dynahash.c is optimized for relatively large, long-lived hash tables.
@@ -231,7 +231,7 @@ void
 tbm_free(TIDBitmap *tbm)
 {
 	if (tbm->instrument)
-		tbm_bitmap_upd_instrument((Node *) tbm);
+		tbm_upd_instrument(tbm);
 	if (tbm->pagetable)
 		hash_destroy(tbm->pagetable);
 	if (tbm->spages)
@@ -687,10 +687,11 @@ tbm_begin_iterate(TIDBitmap *tbm)
 }
 
 /*
- * tbm_iterate - scan through next page of a TIDBitmap or a StreamBitmap.
+ * tbm_generic_iterate - scan through next page of a TIDBitmap or a
+ * StreamBitmap.
  */
 bool
-tbm_iterate(Node *tbm, TBMIterateResult *output)
+tbm_generic_iterate(Node *tbm, TBMIterateResult *output)
 {
 	Assert(IsA(tbm, TIDBitmap) || IsA(tbm, StreamBitmap));
 
@@ -703,7 +704,7 @@ tbm_iterate(Node *tbm, TBMIterateResult *output)
 				if (!hashBitmap->iterating)
 					tbm_begin_iterate(hashBitmap);
 
-				return tbm_iterate_hash(hashBitmap, output);
+				return tbm_iterate(hashBitmap, output);
 			}
 		case T_StreamBitmap:
 			{
@@ -771,7 +772,7 @@ tbm_iterate_page(PagetableEntry *page, TBMIterateResult *output)
 }
 
 /*
- * tbm_iterate_hash - scan through next page of a TIDBitmap
+ * tbm_iterate - scan through next page of a TIDBitmap
  *
  * Gets a TBMIterateResult representing one page, or NULL if there are
  * no more pages to scan.  Pages are guaranteed to be delivered in numerical
@@ -781,8 +782,8 @@ tbm_iterate_page(PagetableEntry *page, TBMIterateResult *output)
  * condition.
  */
 <<<<<<< HEAD
-static bool
-tbm_iterate_hash(TIDBitmap *tbm, TBMIterateResult *output)
+bool
+tbm_iterate(TIDBitmap *tbm, TBMIterateResult *output)
 {
 	PagetableEntry *e;
 	bool		more;
@@ -1623,10 +1624,10 @@ restart:
 
 
 /*
- * tbm_bitmap_free - free a TIDBitmap or StreamBitmap
+ * tbm_generic_free - free a TIDBitmap or StreamBitmap
  */
 void
-tbm_bitmap_free(Node *bm)
+tbm_generic_free(Node *bm)
 {
 	if (bm == NULL)
 		return;
@@ -1653,14 +1654,14 @@ tbm_bitmap_free(Node *bm)
 		default:
 			Assert(0);
 	}
-}	/* tbm_bitmap_free */
+}	/* tbm_generic_free */
 
 
 /*
- * tbm_bitmap_set_instrument - attach caller's Instrumentation object to bitmap
+ * tbm_generic_set_instrument - attach caller's Instrumentation object to bitmap
  */
 void
-tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr)
+tbm_generic_set_instrument(Node *bm, struct Instrumentation *instr)
 {
 	if (bm == NULL)
 		return;
@@ -1682,11 +1683,11 @@ tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr)
 		default:
 			Assert(0);
 	}
-}	/* tbm_bitmap_set_instrument */
+}	/* tbm_generic_set_instrument */
 
 
 /*
- * tbm_bitmap_upd_instrument - update stats in caller's Instrumentation object
+ * tbm_generic_upd_instrument - update stats in caller's Instrumentation object
  *
  * Some callers don't bother to tbm_free() their bitmaps, but let the storage
  * be reclaimed when the MemoryContext is reset.  Such callers should use this
@@ -1694,7 +1695,7 @@ tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr)
  * object before the bitmap goes away.
  */
 void
-tbm_bitmap_upd_instrument(Node *bm)
+tbm_generic_upd_instrument(Node *bm)
 {
 	if (bm == NULL)
 		return;
@@ -1716,7 +1717,7 @@ tbm_bitmap_upd_instrument(Node *bm)
 		default:
 			Assert(0);
 	}
-}	/* tbm_bitmap_upd_instrument */
+}	/* tbm_generic_upd_instrument */
 
 void
 tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid)

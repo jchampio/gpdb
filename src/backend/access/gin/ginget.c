@@ -572,7 +572,7 @@ entryGetItem(Relation index, GinScanEntry entry)
 			if ( entry->partialMatchResult == NULL || entry->offset >= entry->partialMatchResult->ntuples )
 			{
 <<<<<<< HEAD
-				tbm_iterate( (Node *) entry->partialMatch, entry->partialMatchResult );
+				tbm_generic_iterate( entry->partialMatch, entry->partialMatchResult );
 =======
 				entry->partialMatchResult = tbm_iterate( entry->partialMatchIterator );
 >>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a

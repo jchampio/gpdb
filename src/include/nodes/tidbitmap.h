@@ -183,9 +183,10 @@ extern bool bitmap_stream_iterate(StreamNode *n, PagetableEntry *e);
 
 <<<<<<< HEAD
 /* These functions accept either a TIDBitmap or a StreamBitmap... */
-extern void tbm_bitmap_free(Node *bm);
-extern void tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr);
-extern void tbm_bitmap_upd_instrument(Node *bm);
+extern bool tbm_generic_iterate(Node *tbm, TBMIterateResult *output);
+extern void tbm_generic_free(Node *bm);
+extern void tbm_generic_set_instrument(Node *bm, struct Instrumentation *instr);
+extern void tbm_generic_upd_instrument(Node *bm);
 
 extern void tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid);
 =======
