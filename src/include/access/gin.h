@@ -389,12 +389,8 @@ typedef struct GinScanEntryData
 
 	/* partial match support */
 	bool		isPartialMatch;
-<<<<<<< HEAD
-	Node 	   *partialMatch;
-=======
 	TIDBitmap  *partialMatch;
 	TBMIterator *partialMatchIterator;
->>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 	TBMIterateResult *partialMatchResult;
 	StrategyNumber strategy;
 
