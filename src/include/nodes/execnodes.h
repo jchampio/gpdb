@@ -1805,12 +1805,8 @@ typedef struct BitmapHeapScanState
 	ScanState	ss;				/* its first field is NodeTag */
 	struct HeapScanDescData *ss_currentScanDesc;
 	List	   *bitmapqualorig;
-<<<<<<< HEAD
 	Node	   *tbm;
-=======
-	TIDBitmap  *tbm;
-	TBMIterator *tbmiterator;
->>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
+	GenericBMIterator *tbmiterator;
 	TBMIterateResult *tbmres;
 } BitmapHeapScanState;
 
@@ -1830,7 +1826,7 @@ typedef struct BitmapAppendOnlyScanState
 	struct AOCSFetchDescData *baos_currentAOCSFetchDesc;
 	struct AOCSFetchDescData *baos_currentAOCSLossyFetchDesc;
 	List	   *baos_bitmapqualorig;
-	Node  		*baos_tbm;
+	GenericBMIterator *baos_iterator;
 	TBMIterateResult *baos_tbmres;
 	bool		baos_gotpage;
 	int			baos_cindex;
@@ -1859,6 +1855,7 @@ typedef struct BitmapTableScanState
 	void 						*scanDesc;
 	List           				*bitmapqualorig;
 	Node  						*tbm;
+	GenericBMIterator			*tbmiterator;
 	TBMIterateResult 	*tbmres;
 	bool						isLossyBitmapPage;
 	bool						recheckTuples;

@@ -95,10 +95,7 @@ freeScanDesc(BitmapHeapScanState *scanstate)
 static inline void
 initBitmapState(BitmapHeapScanState *scanstate)
 {
-	if (scanstate->tbmres == NULL)
-		scanstate->tbmres =
-			palloc0(sizeof(TBMIterateResult) +
-					MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	/* GPDB_84_MERGE_FIXME: nothing to do? */
 }
 
 /*
@@ -109,11 +106,12 @@ freeBitmapState(BitmapHeapScanState *scanstate)
 {
 	/* BitmapIndexScan is the owner of the bitmap memory. Don't free it here */
 	scanstate->tbm = NULL;
-	if (scanstate->tbmres != NULL)
-	{
-		pfree(scanstate->tbmres);
-		scanstate->tbmres = NULL;
-	}
+	/* Likewise, the tbmres member is owned by the iterator. It'll be freed
+	 * during end_iterate. */
+	scanstate->tbmres = NULL;
+	if (scanstate->tbmiterator)
+		tbm_generic_end_iterate(scanstate->tbmiterator);
+	scanstate->tbmiterator = NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -129,8 +127,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	ExprContext *econtext;
 	HeapScanDesc scan;
 	Index		scanrelid;
-	TIDBitmap  *tbm;
-	TBMIterator *tbmiterator;
+	Node  		*tbm;
+	GenericBMIterator *tbmiterator;
 	TBMIterateResult *tbmres;
 	OffsetNumber targoffset;
 	TupleTableSlot *slot;
@@ -202,7 +200,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			elog(ERROR, "unrecognized result from subplan");
 
 		node->tbm = tbm;
-		node->tbmiterator = tbmiterator = tbm_begin_iterate(tbm);
+		node->tbmiterator = tbmiterator = tbm_generic_begin_iterate(tbm);
 		node->tbmres = tbmres = NULL;
 	}
 
@@ -213,8 +211,15 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		if (tbmres == NULL || tbmres->ntuples == 0)
 		{
-			node->tbmres = tbmres = tbm_iterate(tbmiterator);
-			if (tbmres == NULL)
+			CHECK_FOR_INTERRUPTS();
+
+			if (QueryFinishPending)
+				return NULL;
+
+			node->tbmres = tbmres = tbm_generic_iterate(tbmiterator);
+			more = (tbmres != NULL);
+
+			if (!more)
 			{
 				/* no more entries in the bitmap */
 				break;
@@ -472,13 +477,7 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	/* rescan to release any page pin */
 	heap_rescan(node->ss_currentScanDesc, NULL);
 
-	if (node->tbmiterator)
-		tbm_end_iterate(node->tbmiterator);
-	if (node->tbm)
-		tbm_free(node->tbm);
-	node->tbm = NULL;
-	node->tbmiterator = NULL;
-	node->tbmres = NULL;
+	freeBitmapState(node);
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
@@ -519,18 +518,7 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
-	/*
-	 * release bitmap if any
-	 */
-	if (node->tbmiterator)
-		tbm_end_iterate(node->tbmiterator);
-	if (node->tbm)
-		tbm_free(node->tbm);
-
-	/*
-	 * close heap scan
-	 */
-	heap_endscan(scanDesc);
+	ExecEagerFreeBitmapHeapScan(node);
 
 	/*
 	 * close the heap relation.
