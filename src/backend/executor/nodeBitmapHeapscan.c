@@ -21,7 +21,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapHeapscan.c,v 1.31 2009/01/01 17:23:41 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapHeapscan.c,v 1.32 2009/01/10 21:08:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -129,7 +129,12 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	ExprContext *econtext;
 	HeapScanDesc scan;
 	Index		scanrelid;
+<<<<<<< HEAD
 	Node  		*tbm;
+=======
+	TIDBitmap  *tbm;
+	TBMIterator *tbmiterator;
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 	TBMIterateResult *tbmres;
 	OffsetNumber targoffset;
 	TupleTableSlot *slot;
@@ -148,7 +153,12 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	scan = node->ss_currentScanDesc;
 	scanrelid = ((BitmapHeapScan *) node->ss.ps.plan)->scan.scanrelid;
 	tbm = node->tbm;
+<<<<<<< HEAD
 	tbmres = (TBMIterateResult *) node->tbmres;
+=======
+	tbmiterator = node->tbmiterator;
+	tbmres = node->tbmres;
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 
 	/*
 	 * Check if we are evaluating PlanQual for tuple of this relation.
@@ -189,10 +199,16 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	}
 
 	/*
+<<<<<<< HEAD
 	 * If we haven't yet performed the underlying index scan, or
 	 * we have used up the bitmaps from the previous scan, do the next scan,
 	 * and prepare the bitmap to be iterated over.
  	 */
+=======
+	 * If we haven't yet performed the underlying index scan, do it, and
+	 * begin the iteration over the bitmap.
+	 */
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 	if (tbm == NULL)
 	{
 		tbm = (Node *) MultiExecProcNode(outerPlanState(node));
@@ -201,6 +217,11 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			elog(ERROR, "unrecognized result from subplan");
 
 		node->tbm = tbm;
+<<<<<<< HEAD
+=======
+		node->tbmiterator = tbmiterator = tbm_begin_iterate(tbm);
+		node->tbmres = tbmres = NULL;
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 	}
 
 	for (;;)
@@ -210,6 +231,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		if (tbmres == NULL || tbmres->ntuples == 0)
 		{
+<<<<<<< HEAD
 			CHECK_FOR_INTERRUPTS();
 
 			if (QueryFinishPending)
@@ -221,6 +243,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 				more = tbm_iterate(tbm, tbmres);
 
 			if (!more)
+=======
+			node->tbmres = tbmres = tbm_iterate(tbmiterator);
+			if (tbmres == NULL)
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 			{
 				/* no more entries in the bitmap */
 				break;
@@ -478,7 +504,17 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	/* rescan to release any page pin */
 	heap_rescan(node->ss_currentScanDesc, NULL);
 
+<<<<<<< HEAD
 	freeBitmapState(node);
+=======
+	if (node->tbmiterator)
+		tbm_end_iterate(node->tbmiterator);
+	if (node->tbm)
+		tbm_free(node->tbm);
+	node->tbm = NULL;
+	node->tbmiterator = NULL;
+	node->tbmres = NULL;
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
@@ -519,7 +555,22 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
+<<<<<<< HEAD
 	ExecEagerFreeBitmapHeapScan(node);
+=======
+	/*
+	 * release bitmap if any
+	 */
+	if (node->tbmiterator)
+		tbm_end_iterate(node->tbmiterator);
+	if (node->tbm)
+		tbm_free(node->tbm);
+
+	/*
+	 * close heap scan
+	 */
+	heap_endscan(scanDesc);
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 
 	/*
 	 * close the heap relation.
@@ -561,6 +612,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.state = estate;
 
 	scanstate->tbm = NULL;
+	scanstate->tbmiterator = NULL;
 	scanstate->tbmres = NULL;
 
 	/*

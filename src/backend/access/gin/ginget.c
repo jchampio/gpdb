@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gin/ginget.c,v 1.21 2009/01/01 17:23:34 momjian Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gin/ginget.c,v 1.22 2009/01/10 21:08:36 tgl Exp $
  *-------------------------------------------------------------------------
  */
 
@@ -296,6 +296,7 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry)
 	entry->list = NULL;
 	entry->nlist = 0;
 	entry->partialMatch = NULL;
+	entry->partialMatchIterator = NULL;
 	entry->partialMatchResult = NULL;
 	entry->reduceResult = FALSE;
 	entry->predictNumberResult = 0;
@@ -317,7 +318,14 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry)
 			 */
 			if ( entry->partialMatch )
 			{
+<<<<<<< HEAD
 				tbm_free( (HashBitmap *) entry->partialMatch );
+=======
+				if (entry->partialMatchIterator)
+					tbm_end_iterate(entry->partialMatchIterator);
+				entry->partialMatchIterator = NULL;
+				tbm_free( entry->partialMatch );
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 				entry->partialMatch = NULL;
 			}
 			LockBuffer(stackEntry->buffer, GIN_UNLOCK);
@@ -329,7 +337,11 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry)
 
 		if ( (HashBitmap *) entry->partialMatch && !tbm_is_empty((HashBitmap *) entry->partialMatch) )
 		{
+<<<<<<< HEAD
 			tbm_begin_iterate((HashBitmap *) entry->partialMatch);
+=======
+			entry->partialMatchIterator = tbm_begin_iterate(entry->partialMatch);
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 			entry->isFinished = FALSE;
 		}
 	}
@@ -559,11 +571,17 @@ entryGetItem(Relation index, GinScanEntry entry)
 		{
 			if ( entry->partialMatchResult == NULL || entry->offset >= entry->partialMatchResult->ntuples )
 			{
+<<<<<<< HEAD
 				tbm_iterate( (Node *) entry->partialMatch, entry->partialMatchResult );
+=======
+				entry->partialMatchResult = tbm_iterate( entry->partialMatchIterator );
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 
 				if ( entry->partialMatchResult == NULL )
 				{
 					ItemPointerSet(&entry->curItem, InvalidBlockNumber, InvalidOffsetNumber);
+					tbm_end_iterate(entry->partialMatchIterator);
+					entry->partialMatchIterator = NULL;
 					entry->isFinished = TRUE;
 					break;
 				}

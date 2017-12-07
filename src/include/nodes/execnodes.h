@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.199 2009/01/01 17:23:59 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.200 2009/01/10 21:08:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1796,6 +1796,7 @@ typedef struct DynamicBitmapIndexScanState
  *
  *		bitmapqualorig	   execution state for bitmapqualorig expressions
  *		tbm				   bitmap obtained from child index scan(s)
+ *		tbmiterator		   iterator for scanning current pages
  *		tbmres			   current-page data
  * ----------------
  */
@@ -1804,7 +1805,12 @@ typedef struct BitmapHeapScanState
 	ScanState	ss;				/* its first field is NodeTag */
 	struct HeapScanDescData *ss_currentScanDesc;
 	List	   *bitmapqualorig;
+<<<<<<< HEAD
 	Node	   *tbm;
+=======
+	TIDBitmap  *tbm;
+	TBMIterator *tbmiterator;
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 	TBMIterateResult *tbmres;
 } BitmapHeapScanState;
 

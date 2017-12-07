@@ -17,7 +17,7 @@
  * Portions Copyright (c) 2012-Present Pivotal Software, Inc.
  * Copyright (c) 2003-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/nodes/tidbitmap.h,v 1.8 2009/01/01 17:24:00 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/tidbitmap.h,v 1.9 2009/01/10 21:08:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -149,6 +149,9 @@ typedef struct StreamNode   IndexStream;
  */
 typedef struct StreamNode   OpStream;
 
+/* Likewise, TBMIterator is private */
+typedef struct TBMIterator TBMIterator;
+
 /* Result structure for tbm_iterate */
 typedef struct
 {
@@ -178,11 +181,17 @@ extern void stream_add_node(StreamBitmap *strm, StreamNode *node, StreamType kin
 extern StreamNode *tbm_create_stream_node(HashBitmap *tbm);
 extern bool bitmap_stream_iterate(StreamNode *n, PagetableEntry *e);
 
+<<<<<<< HEAD
 /* These functions accept either a HashBitmap or a StreamBitmap... */
 extern void tbm_bitmap_free(Node *bm);
 extern void tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr);
 extern void tbm_bitmap_upd_instrument(Node *bm);
 
 extern void tbm_convert_appendonly_tid_out(ItemPointer psudeoHeapTid, AOTupleId *aoTid);
+=======
+extern TBMIterator *tbm_begin_iterate(TIDBitmap *tbm);
+extern TBMIterateResult *tbm_iterate(TBMIterator *iterator);
+extern void tbm_end_iterate(TBMIterator *iterator);
+>>>>>>> 43a57cf3657... Revise the TIDBitmap API to support multiple concurrent iterations over a
 
 #endif   /* TIDBITMAP_H */
