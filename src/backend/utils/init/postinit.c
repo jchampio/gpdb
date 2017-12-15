@@ -718,7 +718,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * snapshot.  We don't have a use for the snapshot itself, but we're
 	 * interested in the secondary effect that it sets RecentGlobalXmin.
 	 */
-	if (!bootstrap)
+	if (!bootstrap && !(am_ftshandler && AreWeAMirror))
 	{
 		StartTransactionCommand();
 		(void) GetTransactionSnapshot();
@@ -745,6 +745,13 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 					 errmsg("no roles are defined in this database system"),
 					 errhint("You should immediately run CREATE USER \"%s\" CREATEUSER;.",
 							 username)));
+	}
+	else if (am_ftshandler && AreWeAMirror)
+	{
+		/* XXX */
+		FakeClientAuthentication(MyProcPort);
+		InitializeSessionUserIdStandalone();
+		am_superuser = true;
 	}
 	else
 	{
@@ -802,7 +809,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		/*
 		 * We don't have replication role, which existed in postgres.
 		 */
-		if (!superuser())
+		if (!am_superuser)
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser role to start walsender")));
@@ -822,7 +829,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		pgstat_bestart();
 
 		/* close the transaction we started above */
-		CommitTransactionCommand();
+		if (!(am_ftshandler && AreWeAMirror))
+			CommitTransactionCommand();
 
 		return;
 	}
@@ -989,7 +997,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * process_startup_options parses the GUC.
 	 */
 	if (gp_maintenance_mode && Gp_role == GP_ROLE_DISPATCH &&
-		!(superuser() && gp_maintenance_conn))
+		!(am_superuser && gp_maintenance_conn))
 		ereport(FATAL,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("maintenance mode: connected by superuser only"),

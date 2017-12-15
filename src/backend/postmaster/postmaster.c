@@ -156,6 +156,8 @@ void SeqServerMain(int argc, char *argv[]);
 void FtsProbeMain(int argc, char *argv[]);
 #endif
 
+bool AreWeAMirror = false;
+
 
 /*
  * List of active backends (or child processes anyway; we don't actually
@@ -2861,6 +2863,14 @@ retry1:
 		port->guc_options = NIL;
 	}
 
+	/* XXX check to see if we're a mirror */
+	{
+		FILE *fd = AllocateFile("recovery.conf", "r");
+		AreWeAMirror = fd ? true : false;
+		if (fd)
+			FreeFile(fd);
+	}
+
 	/* Check a user name was given. */
 	if (port->user_name == NULL || port->user_name[0] == '\0')
 		ereport(FATAL,
@@ -2926,6 +2936,8 @@ retry1:
 	switch (port->canAcceptConnections)
 	{
 		case CAC_STARTUP:
+			if (am_ftshandler && AreWeAMirror)
+				break;
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 					 errSendAlert(false),
@@ -3790,9 +3802,12 @@ canAcceptConnections(void)
 			 pmState == PM_STARTUP_PASS2 ||
 			 pmState == PM_STARTUP_PASS3 ||
 			 pmState == PM_STARTUP_PASS4 ||
-			 pmState == PM_RECOVERY ||
+			 /*pmState == PM_RECOVERY ||*/
 			 pmState == PM_RECOVERY_CONSISTENT))
 			return CAC_STARTUP; /* normal startup */
+
+		if (!FatalError && (pmState == PM_RECOVERY))
+			return AreWeAMirror ? CAC_OK : CAC_STARTUP;
 
 		if (mirrorMode == PMModeMirrorSegment)
 			return CAC_MIRROR_OR_QUIESCENT;
