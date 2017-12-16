@@ -8614,20 +8614,23 @@ StartupXLOG_Pass4(void)
 	 */
 	if (ControlFile->state == DB_IN_STANDBY_NEW_TLI_SET)
 	{
-		GpRoleValue old_role = Gp_role;
-	
-		/* I am privileged */
-		InitializeSessionUserIdStandalone();
-		/* Start transaction locally */
-		Gp_role = GP_ROLE_UTILITY;
-		StartTransactionCommand();
-		GetTransactionSnapshot();
-		DirectFunctionCall1(gp_activate_standby, (Datum) 0);
-		/* close the transaction we started above */
-		CommitTransactionCommand();
-		Gp_role = old_role;
+		if (GpIdentity.segindex == MASTER_CONTENT_ID)
+		{
+			GpRoleValue old_role = Gp_role;
+		
+			/* I am privileged */
+			InitializeSessionUserIdStandalone();
+			/* Start transaction locally */
+			Gp_role = GP_ROLE_UTILITY;
+			StartTransactionCommand();
+			GetTransactionSnapshot();
+			DirectFunctionCall1(gp_activate_standby, (Datum) 0);
+			/* close the transaction we started above */
+			CommitTransactionCommand();
+			Gp_role = old_role;
 
-		ereport(LOG, (errmsg("Updated catalog to support standby promotion")));
+			ereport(LOG, (errmsg("Updated catalog to support standby promotion")));
+		}
 
 		LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 		ControlFile->state = DB_IN_PRODUCTION;
