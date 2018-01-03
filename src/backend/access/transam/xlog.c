@@ -6072,6 +6072,21 @@ XLogReadRecoveryCommandFile(int emode)
 	}
 }
 
+static void
+renameRecoveryFile()
+{
+	/*
+	 * Rename the config file out of the way, so that we don't accidentally
+	 * re-enter archive recovery mode in a subsequent crash.
+	 */
+	unlink(RECOVERY_COMMAND_DONE);
+	if (rename(RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE) != 0)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not rename file \"%s\" to \"%s\": %m",
+						RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE)));
+}
+
 /*
  * Exit archive-recovery state
  */
@@ -6174,17 +6189,7 @@ exitArchiveRecovery(TimeLineID endTLI, uint32 endLogId, uint32 endLogSeg)
 	/* Get rid of any remaining recovered timeline-history file, too */
 	snprintf(recoveryPath, MAXPGPATH, XLOGDIR "/RECOVERYHISTORY");
 	unlink(recoveryPath);		/* ignore any error */
-
-	/*
-	 * Rename the config file out of the way, so that we don't accidentally
-	 * re-enter archive recovery mode in a subsequent crash.
-	 */
-	unlink(RECOVERY_COMMAND_DONE);
-	if (rename(RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE) != 0)
-		ereport(FATAL,
-				(errcode_for_file_access(),
-				 errmsg("could not rename file \"%s\" to \"%s\": %m",
-						RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE)));
+	renameRecoveryFile();
 }
 
 /*
@@ -7229,6 +7234,14 @@ StartupXLOG(void)
 		exitArchiveRecovery(curFileTLI, endLogId, endLogSeg);
 
 	/*
+	 * Recovery command file must be deleted during promotion to prevent
+	 * StartupXLOG from incorrectly concluding that we are still a standby.
+	 * This could happen if the promoted standby goes through a restart.
+	 */
+	if (ControlFile->state == DB_IN_STANDBY_PROMOTED)
+		renameRecoveryFile();
+
+	/*
 	 * Prepare to write WAL starting at EndOfLog position, and init xlog
 	 * buffer cache using the block containing the last record from the
 	 * previous incarnation.
@@ -7426,6 +7439,31 @@ StartupXLOG(void)
 							   "recovery_end_command",
 							   true);
 #endif
+
+	/*
+	 * If we are a standby with contentid -1 and undergoing promotion,
+	 * update ourselves as the new master in catalog.  This does not
+	 * apply to a mirror (standby of a GPDB segment) because it is
+	 * managed by FTS.
+	 */
+	if (GpIdentity.segindex == MASTER_CONTENT_ID &&
+		ControlFile->state == DB_IN_STANDBY_PROMOTED)
+	{
+		GpRoleValue old_role = Gp_role;
+
+		/* I am privileged */
+		InitializeSessionUserIdStandalone();
+		/* Start transaction locally */
+		Gp_role = GP_ROLE_UTILITY;
+		StartTransactionCommand();
+		GetTransactionSnapshot();
+		DirectFunctionCall1(gp_activate_standby, (Datum) 0);
+		/* close the transaction we started above */
+		CommitTransactionCommand();
+		Gp_role = old_role;
+
+		ereport(LOG, (errmsg("Updated catalog to support standby promotion")));
+	}
 
 	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 	ControlFile->state = DB_IN_PRODUCTION;
