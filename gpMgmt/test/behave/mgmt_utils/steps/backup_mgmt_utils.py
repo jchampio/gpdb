@@ -397,18 +397,6 @@ def impl(context, dumpfile):
     if not buf in open(dumpfile).read():
         raise Exception("pg_dump did not backup aggregate functions correctly.")
 
-@given('verify that a role "{role_name}" exists in database "{dbname}"')
-@then('verify that a role "{role_name}" exists in database "{dbname}"')
-def impl(context, role_name, dbname):
-    query = "select rolname from pg_roles where rolname = '%s'" % role_name
-    conn = dbconn.connect(dbconn.DbURL(dbname=dbname))
-    try:
-        result = getRows(dbname, query)[0][0]
-        if result != role_name:
-            raise Exception("Role %s does not exist in database %s." % (role_name, dbname))
-    except:
-        raise Exception("Role %s does not exist in database %s." % (role_name, dbname))
-
 @given('a list of files "{filenames}" of tables "{table_list}" in "{dbname}" exists for validation')
 @when('a list of files "{filenames}" of tables "{table_list}" in "{dbname}" exists for validation')
 @then('a list of files "{filenames}" of tables "{table_list}" in "{dbname}" exists for validation')

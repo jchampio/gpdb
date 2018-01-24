@@ -23,9 +23,9 @@ import commands
 import signal
 from collections import defaultdict
 
+from behave import given, when, then
 from datetime import datetime
 from time import sleep
-from behave import given, when, then
 
 from gppylib.commands.gp import SegmentStart, GpStandbyStart
 from gppylib.commands.unix import findCmdInPath
@@ -36,6 +36,8 @@ from gppylib.operations.unix import ListRemoteFilesByPattern, CheckRemoteFile
 from test.behave_utils.gpfdist_utils.gpfdist_mgmt import Gpfdist
 from test.behave_utils.utils import *
 from test.behave_utils.PgHba import PgHba, Entry
+from test.behave_utils.cluster_setup import TestCluster, reset_hosts
+from test.behave_utils.cluster_expand import Gpexpand
 from gppylib.commands.base import Command, REMOTE
 
 labels_json = '/tmp/old_to_new_timestamp_labels.json'
@@ -678,6 +680,7 @@ def impl(context, command, err_msg):
     check_err_msg(context, err_msg)
 
 
+@when('{command} should print "{out_msg}" to stdout')
 @then('{command} should print "{out_msg}" to stdout')
 def impl(context, command, out_msg):
     check_stdout_msg(context, out_msg)
@@ -2642,6 +2645,21 @@ def delete_data_dir(host):
     cmd.run(validateAfter=True)
 
 
+def run_gpinitstandby(context, hostname, port, standby_data_dir, options='', remote=False):
+    if '-n' in options:
+        cmd = "gpinitstandby -a"
+    elif remote:
+        #if standby_data_dir exists on $hostname, remove it
+        remove_dir(hostname, standby_data_dir)
+        # create the data dir on $hostname
+        create_dir(hostname, os.path.dirname(standby_data_dir))
+        # We do not set port nor data dir here to test gpinitstandby's ability to autogather that info
+        cmd = "gpinitstandby -a -s %s" % hostname
+    else:
+        cmd = "gpinitstandby -a -s %s -P %s -F %s" % (hostname, port, standby_data_dir)
+
+    run_gpcommand(context, cmd + ' ' + options)
+
 @when('the user initializes a standby on the same host as master')
 def impl(context):
     hostname = get_master_hostname('template1')[0][0]
@@ -2650,6 +2668,43 @@ def impl(context):
     cmd = "gpinitstandby -a -s %s -P %d -F pg_system:%s" % (hostname, port_guaranteed_open, temp_data_dir)
     run_gpcommand(context, cmd)
     context.standby_data_dir = temp_data_dir
+    context.standby_was_initialized = True
+
+@when('the user runs gpinitstandby with options "{options}"')
+@then('the user runs gpinitstandby with options "{options}"')
+@given('the user runs gpinitstandby with options "{options}"')
+def impl(context, options):
+    dbname = 'postgres'
+    with dbconn.connect(dbconn.DbURL(port=os.environ.get("PGPORT"), dbname=dbname)) as conn:
+        query = """select distinct content, hostname from gp_segment_configuration order by content limit 2;"""
+        cursor = dbconn.execSQL(conn, query)
+
+    try:
+        _, master_hostname = cursor.fetchone()
+        _, segment_hostname = cursor.fetchone()
+    except:
+        raise Exception("Did not get two rows from query: %s" % query)
+
+    # if we have two hosts, assume we're testing on a multinode cluster
+    if master_hostname != segment_hostname:
+        context.standby_hostname = segment_hostname
+        context.standby_port = os.environ.get("PGPORT")
+        remote = True
+    else:
+        context.standby_hostname = master_hostname
+        context.standby_port = get_open_port()
+        remote = False
+
+    # -n option assumes gpinitstandby already ran and put standby in catalog
+    if "-n" not in options:
+        if remote:
+            context.standby_data_dir = master_data_dir
+        else:
+            context.standby_data_dir = tempfile.mkdtemp() + "/standby_datadir"
+
+    run_gpinitstandby(context, context.standby_hostname, context.standby_port, context.standby_data_dir, options, remote)
+    context.master_hostname = master_hostname
+    context.master_port = os.environ.get("PGPORT")
     context.standby_was_initialized = True
 
 
@@ -5332,3 +5387,279 @@ def impl(context, command, target):
             contents += line
     if target not in contents:
         raise Exception("cannot find %s in %s" % (target, filename))
+
+@given('verify that a role "{role_name}" exists in database "{dbname}"')
+@then('verify that a role "{role_name}" exists in database "{dbname}"')
+def impl(context, role_name, dbname):
+    query = "select rolname from pg_roles where rolname = '%s'" % role_name
+    conn = dbconn.connect(dbconn.DbURL(dbname=dbname))
+    try:
+        result = getRows(dbname, query)[0][0]
+        if result != role_name:
+            raise Exception("Role %s does not exist in database %s." % (role_name, dbname))
+    except:
+        raise Exception("Role %s does not exist in database %s." % (role_name, dbname))
+
+@given('the system timezone is saved')
+def impl(context):
+    cmd = Command(name='Get system timezone',
+                  cmdStr='date +"%Z"')
+    cmd.run(validateAfter=True)
+    context.system_timezone = cmd.get_stdout()
+
+@then('the database timezone is saved')
+def impl(context):
+    cmd = Command(name='Get database timezone',
+                  cmdStr='psql -d template1 -c "show time zone" -t')
+    cmd.run(validateAfter=True)
+    tz = cmd.get_stdout()
+    cmd = Command(name='Get abbreviated database timezone',
+                  cmdStr='psql -d template1 -c "select abbrev from pg_timezone_names where name=\'%s\';" -t' % tz)
+    cmd.run(validateAfter=True)
+    context.database_timezone = cmd.get_stdout()
+
+@then('the database timezone matches the system timezone')
+def step_impl(context):
+    if context.database_timezone != context.system_timezone:
+        raise Exception("Expected database timezone to be %s, but it was %s" % (context.system_timezone, context.database_timezone))
+
+@then('the database timezone matches "{abbreviated_timezone}"')
+def step_impl(context, abbreviated_timezone):
+    if context.database_timezone != abbreviated_timezone:
+        raise Exception("Expected database timezone to be %s, but it was %s" % (abbreviated_timezone, context.database_timezone))
+
+@then('the startup timezone is saved')
+def step_impl(context):
+    logfile = "%s/pg_log/startup.log" % os.getenv("MASTER_DATA_DIRECTORY")
+    timezone = ""
+    with open(logfile) as l:
+        first_line = l.readline()
+        timestamp = first_line.split(",")[0]
+        timezone = timestamp[-3:]
+    if timezone == "":
+        raise Exception("Could not find timezone information in startup.log")
+    context.startup_timezone = timezone
+
+@then('the startup timezone matches the system timezone')
+def step_impl(context):
+    if context.startup_timezone != context.system_timezone:
+        raise Exception("Expected timezone in startup.log to be %s, but it was %s" % (context.system_timezone, context.startup_timezone))
+
+@then('the startup timezone matches "{abbreviated_timezone}"')
+def step_impl(context, abbreviated_timezone):
+    if context.startup_timezone != abbreviated_timezone:
+        raise Exception("Expected timezone in startup.log to be %s, but it was %s" % (abbreviated_timezone, context.startup_timezone))
+
+
+@given("a working directory of the test as '{working_directory}'")
+def impl(context, working_directory):
+    context.working_directory = working_directory
+
+@given('a cluster is created with no mirrors on "{master_host}" and "{segment_host}"')
+def impl(context, master_host, segment_host):
+    del os.environ['MASTER_DATA_DIRECTORY']
+    os.environ['MASTER_DATA_DIRECTORY'] = os.path.join(context.working_directory,
+                                                       'data/master/gpseg-1')
+    try:
+        with dbconn.connect(dbconn.DbURL(dbname='template1')) as conn:
+            curs = dbconn.execSQL(conn, "select count(*) from gp_segment_configuration where role='m';")
+            count = curs.fetchall()[0][0]
+            if count == 0:
+                print "Skipping creating a new cluster since the cluster is primary only already."
+                return
+    except:
+        pass
+
+    testcluster = TestCluster(hosts=[master_host,segment_host], base_dir=context.working_directory)
+    testcluster.reset_cluster()
+    testcluster.create_cluster(with_mirrors=False)
+    context.gpexpand_mirrors_enabled = False
+
+@given('a cluster is created with mirrors on "{master_host}" and "{segment_host}"')
+def impl(context, master_host, segment_host):
+    del os.environ['MASTER_DATA_DIRECTORY']
+    os.environ['MASTER_DATA_DIRECTORY'] = os.path.join(context.working_directory,
+                                                       'data/master/gpseg-1')
+    try:
+        with dbconn.connect(dbconn.DbURL(dbname='template1')) as conn:
+            curs = dbconn.execSQL(conn, "select count(*) from gp_segment_configuration where role='m';")
+            count = curs.fetchall()[0][0]
+            if count > 0:
+                print "Skipping creating a new cluster since the cluster has mirrors already."
+                return
+    except:
+        pass
+
+    testcluster = TestCluster(hosts=[master_host,segment_host], base_dir=context.working_directory)
+    testcluster.reset_cluster()
+    testcluster.create_cluster(with_mirrors=True)
+    context.gpexpand_mirrors_enabled = True
+
+@given('the user runs gpexpand interview to add {num_of_segments} new segment and {num_of_hosts} new host "{hostnames}"')
+def impl(context, num_of_segments, num_of_hosts, hostnames):
+    num_of_segments = int(num_of_segments)
+    num_of_hosts = int(num_of_hosts)
+
+    hosts = []
+    if num_of_hosts > 0:
+        hosts = hostnames.split(',')
+        if num_of_hosts != len(hosts):
+            raise Exception("Incorrect amount of hosts. number of hosts:%s\nhostnames: %s" % (num_of_hosts, hosts))
+
+    temp_base_dir = context.temp_base_dir
+    primary_dir = os.path.join(temp_base_dir, 'data', 'primary')
+    mirror_dir = ''
+    if context.gpexpand_mirrors_enabled:
+        mirror_dir = os.path.join(temp_base_dir, 'data', 'mirror')
+
+    directory_pairs = []
+    # we need to create the tuples for the interview to work.
+    for i in range(0, num_of_segments):
+        directory_pairs.append((primary_dir,mirror_dir))
+
+    gpexpand = Gpexpand(context, working_directory=context.working_directory, database='gptest')
+    output, returncode = gpexpand.do_interview(hosts=hosts,
+                                               num_of_segments=num_of_segments,
+                                               directory_pairs=directory_pairs,
+                                               has_mirrors=context.gpexpand_mirrors_enabled)
+    if returncode != 0:
+        raise Exception("*****An error occured*****:\n %s" % output)
+
+@given('there are no gpexpand_inputfiles')
+def impl(context):
+    map(os.remove, glob.glob("gpexpand_inputfile*"))
+
+@when('the user runs gpexpand with the latest gpexpand_inputfile')
+def impl(context):
+    gpexpand = Gpexpand(context, working_directory=context.working_directory, database='gptest')
+    gpexpand.initialize_segments()
+
+@when('the user runs gpexpand to redistribute')
+def impl(context):
+    gpexpand = Gpexpand(context, working_directory=context.working_directory, database='gptest')
+    context.command = gpexpand
+    gpexpand.redistribute()
+
+@when('the user runs gpexpand to redistribute with the --end flag')
+def impl(context):
+    gpexpand = Gpexpand(context, working_directory=context.working_directory, database='gptest')
+    context.command = gpexpand
+    gpexpand.redistribute(endtime=True)
+
+@when('the user runs gpexpand to redistribute with the --duration flag')
+def impl(context):
+    gpexpand = Gpexpand(context, working_directory=context.working_directory, database='gptest')
+    context.command = gpexpand
+    gpexpand.redistribute(duration=True)
+
+@when('the user runs gpexpand with a static inputfile for a single-node cluster with mirrors')
+def impl(context):
+    inputfile_contents = """sdw1:sdw1:20502:/tmp/gpexpand_behave/data/primary/gpseg2:6:2:p
+sdw1:sdw1:21502:/tmp/gpexpand_behave/data/mirror/gpseg2:8:2:m
+sdw1:sdw1:20503:/tmp/gpexpand_behave/data/primary/gpseg3:7:3:p
+sdw1:sdw1:21503:/tmp/gpexpand_behave/data/mirror/gpseg3:9:3:m"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    inputfile_name = "%s/gpexpand_inputfile_%s" % (context.working_directory, timestamp)
+    with open(inputfile_name, 'w') as fd:
+        fd.write(inputfile_contents)
+
+    gpexpand = Gpexpand(context, working_directory=context.working_directory, database='gptest')
+    gpexpand.initialize_segments()
+
+@given('the number of segments have been saved')
+def impl(context):
+    dbname = 'gptest'
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        query = """SELECT count(*) from gp_segment_configuration where -1 < content"""
+        context.start_data_segments = dbconn.execSQLForSingleton(conn, query)
+
+@then('verify that the cluster has {num_of_segments} new segments')
+def impl(context, num_of_segments):
+    dbname = 'gptest'
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        query = """SELECT count(*) from gp_segment_configuration where -1 < content"""
+        end_data_segments = dbconn.execSQLForSingleton(conn, query)
+
+    if int(num_of_segments) == int(end_data_segments - context.start_data_segments):
+        return
+
+    raise Exception("Incorrect amount of segments.\nprevious: %s\ncurrent: %s" % (context.start_data_segments, end_data_segments))
+
+@given('the cluster is setup for an expansion on hosts "{hostnames}"')
+def impl(context, hostnames):
+    hosts = hostnames.split(",")
+    temp_base_dir = context.temp_base_dir
+    for host in hosts:
+        cmd = Command(name='create data directories for expansion',
+                      cmdStr="mkdir -p %s/data/primary; mkdir -p %s/data/mirror" % (temp_base_dir, temp_base_dir),
+                      ctxt=REMOTE,
+                      remoteHost=host)
+        cmd.run(validateAfter=True)
+
+@given('a temporary directory to expand into')
+def impl(context):
+    context.temp_base_dir = tempfile.mkdtemp(dir='/tmp')
+
+@given('the new host "{hostnames}" is ready to go')
+def impl(context, hostnames):
+    hosts = hostnames.split(',')
+    reset_hosts(hosts, context.working_directory)
+    reset_hosts(hosts, context.temp_base_dir)
+
+@given('the database is killed on hosts "{hostnames}"')
+def impl(context, hostnames):
+    hosts = hostnames.split(",")
+    for host in hosts:
+        cmd = Command(name='pkill postgres',
+                      cmdStr="pkill postgres || true",
+                      ctxt=REMOTE,
+                      remoteHost=host)
+        cmd.run(validateAfter=True)
+
+@given('user has created expansionranktest tables')
+def impl(context):
+    dbname = 'gptest'
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        for i in range(7,10):
+            query = """drop table if exists expansionranktest%s""" % (i)
+            dbconn.execSQL(conn, query)
+            query = """create table expansionranktest%s(a int)""" % (i)
+            dbconn.execSQL(conn, query)
+        conn.commit()
+
+@given('user has fixed the expansion order for tables')
+def impl(context):
+    dbname = 'gptest'
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        for i in range(7,10):
+            query = """UPDATE gpexpand.status_detail SET rank=%s WHERE fq_name = 'public.expansionranktest%s'""" % (i,i)
+            dbconn.execSQL(conn, query)
+        conn.commit()
+
+@then('the tables were expanded in the specified order')
+def impl(context):
+# select rank from gpexpand.status_detail WHERE rank IN (7,8,9) ORDER BY expansion_started;
+    dbname = 'gptest'
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        query = """select rank from gpexpand.status_detail WHERE rank IN (7,8,9) ORDER BY expansion_started"""
+        cursor = dbconn.execSQL(conn, query)
+
+        rank = cursor.fetchone()[0]
+        if rank != 7:
+            raise Exception("Expected table with gpexpand.status rank 7 to have "
+                            "started expanding first instead got table with rank "
+                            "%d") % rank
+
+        rank = cursor.fetchone()[0]
+        if rank != 8:
+            raise Exception("Expected table with gpexpand.status rank 8 to have "
+                            "started expanding second instead got table with rank "
+                            "%d") % rank
+
+        rank = cursor.fetchone()[0]
+        if rank != 9:
+            raise Exception("Expected table with gpexpand.status rank 9 to have "
+                            "started expanding third instead got table with rank "
+                            "%d") % rank
+
+        return
