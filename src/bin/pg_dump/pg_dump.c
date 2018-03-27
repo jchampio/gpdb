@@ -3392,7 +3392,7 @@ getTables(int *numTables)
 					  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace) AS reltablespace, "
 					  "array_to_string(c.reloptions, ', ') as reloptions, "
 					  "p.parrelid as parrelid, "
-					  "p.parlevel as parlevel "
+					  "pl.parlevel as parlevel "
 					  "from pg_class c "
 					  "left join pg_depend d on "
 					  "(c.relkind = '%c' and "
