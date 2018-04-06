@@ -23,6 +23,8 @@
 #include <limits.h>
 
 #include "catalog/pg_collation.h"
+#include "catalog/pg_constraint.h"
+#include "catalog/indexing.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
@@ -50,9 +52,12 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
+#include "utils/array.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+#include "utils/tqual.h"
 #include "catalog/pg_aggregate.h"
 
 #include "cdb/cdbllize.h"
@@ -3331,6 +3336,107 @@ generate_dqa_pruning_tlists(MppGroupContext *ctx,
 	}
 }
 
+static bool
+has_functional_dependency(Var *from, Var *to, List *rangeTable)
+{
+	Oid			relid;
+	bool		to_is_primary = false;
+	Relation	pg_constraint;
+	HeapTuple	tuple;
+	SysScanDesc scan;
+	ScanKeyData skey[1];
+	RangeTblEntry *rte;
+
+	if (from->varno != to->varno)
+	{
+		/* These aren't part of the same table; get out. */
+		return false;
+	}
+
+	/* Look up the relid of the "to" Var from the range table. */
+	rte = list_nth(rangeTable, to->varno - 1);
+	Assert(rte);
+	Assert(rte->rtekind == RTE_RELATION);
+
+	relid = rte->relid;
+
+	/* Scan pg_constraint for constraints of the target rel */
+	pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
+
+	ScanKeyInit(&skey[0],
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(pg_constraint, ConstraintRelidIndexId, true,
+							  SnapshotNow, 1, skey);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tuple);
+		Datum		adatum;
+		bool		isNull;
+		ArrayType  *arr;
+		int16	   *attnums;
+		int			numkeys;
+		int			i;
+		bool		found_col;
+
+		/* Only PK constraints are of interest for now, see comment above */
+		if (con->contype != CONSTRAINT_PRIMARY)
+			continue;
+		/* Constraint must be non-deferrable */
+		if (con->condeferrable)
+			continue;
+
+		/* Extract the conkey array, ie, attnums of PK's columns */
+		adatum = heap_getattr(tuple, Anum_pg_constraint_conkey,
+							  RelationGetDescr(pg_constraint), &isNull);
+		if (isNull)
+			elog(ERROR, "null conkey for constraint %u",
+				 HeapTupleGetOid(tuple));
+		arr = DatumGetArrayTypeP(adatum);		/* ensure not toasted */
+		numkeys = ARR_DIMS(arr)[0];
+		if (ARR_NDIM(arr) != 1 ||
+			numkeys < 0 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != INT2OID)
+			elog(ERROR, "conkey is not a 1-D smallint array");
+		attnums = (int16 *) ARR_DATA_PTR(arr);
+
+		found_col = false;
+		for (i = 0; i < numkeys; i++)
+		{
+			AttrNumber	attnum = attnums[i];
+
+			found_col = false;
+
+			if (IsA(to, Var) &&
+				to->varno == from->varno &&
+				to->varlevelsup == 0 &&
+				to->varattno == attnum)
+			{
+				found_col = true;
+			}
+
+			if (!found_col)
+				break;
+		}
+
+		if (found_col)
+		{
+			to_is_primary = true;
+			break;
+		}
+	}
+
+	systable_endscan(scan);
+
+	heap_close(pg_constraint, AccessShareLock);
+
+	return to_is_primary;
+}
+
 /* Function: deconstruct_agg_info
  *
  * Top-level deconstruction of the target list and having qual of an
@@ -3344,6 +3450,8 @@ deconstruct_agg_info(MppGroupContext *ctx)
 {
 	int			i;
 	ListCell   *lc;
+	List	   *rangeTable;
+	List	   *additional_grps_tlist = NIL;
 
 	/*
 	 * Initialize temporaries to hold the parts of the preliminary target list
@@ -3380,6 +3488,68 @@ deconstruct_agg_info(MppGroupContext *ctx)
 		prelim_tle->resjunk = false;
 		ctx->grps_tlist = lappend(ctx->grps_tlist, prelim_tle);
 	}
+
+	/*
+	 * FIXME: fix up the grps_tlist to also include any columns that have a
+	 * functional dependency on a primary key in the GROUP BY clause (i.e. they
+	 * are part of a relation that's already being grouped by a primary key,
+	 * which guarantees that tuples composed of these columns are unique).
+	 */
+	rangeTable = ctx->root->parse->rtable;
+	Assert(rangeTable);
+
+	foreach (lc, ctx->sub_tlist)
+	{
+		TargetEntry *tle = lfirst(lc);
+		Expr		*expr = tle->expr;
+		Var			*var;
+		ListCell	*grp_lc;
+		bool		 has_dep = false;
+
+		Assert(IsA(expr, Var));
+		var = (Var *) expr;
+
+		foreach (grp_lc, ctx->grps_tlist)
+		{
+			TargetEntry *grp_tle = lfirst(grp_lc);
+			Expr		*grp_expr = grp_tle->expr;
+			Var			*grp_var;
+
+			Assert(IsA(grp_expr, Var));
+			grp_var = (Var *) grp_expr;
+
+			if (equal(var, grp_var))
+			{
+				/* Don't add duplicates. */
+				has_dep = false;
+				break;
+			}
+
+			if (!has_dep && has_functional_dependency(var, grp_var, rangeTable))
+			{
+				has_dep = true;
+			}
+		}
+
+		if (has_dep)
+		{
+			TargetEntry *copy;
+
+			/* Copy the entry so that it can later be added to grps_tlist. */
+			copy = makeTargetEntry(copyObject(tle->expr),
+								   list_length(ctx->grps_tlist)
+								   + list_length(additional_grps_tlist) + 1,
+								   (tle->resname == NULL) ? NULL
+														  : pstrdup(tle->resname),
+								   false);
+			copy->ressortgroupref = tle->ressortgroupref;
+
+			additional_grps_tlist = lappend(additional_grps_tlist, copy);
+		}
+	}
+
+	ctx->grps_tlist = list_concat(ctx->grps_tlist, additional_grps_tlist);
+	ctx->numGroupCols += list_length(additional_grps_tlist);
 
 	/*
 	 * Continue to construct the target list for the preliminary Agg node by
