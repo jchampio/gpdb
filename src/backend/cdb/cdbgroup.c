@@ -3087,6 +3087,7 @@ generate_three_tlists(List *tlist,
 					  int numGroupCols,
 					  AttrNumber *groupColIdx,
 					  Oid *groupOperators,
+					  PlannerInfo *root,
 					  List **p_tlist1,
 					  List **p_tlist2,
 					  List **p_tlist3,
@@ -3095,7 +3096,7 @@ generate_three_tlists(List *tlist,
 	ListCell   *lc;
 	int			resno = 1;
 
-	MppGroupContext ctx;		/* Just for API matching! */
+	MppGroupContext ctx = {0};		/* Just for API matching! */
 
 	/*
 	 * Similar to the final tlist entries in two-stage aggregation, we use
@@ -3115,6 +3116,7 @@ generate_three_tlists(List *tlist,
 	ctx.groupOperators = groupOperators;
 	ctx.numDistinctCols = 0;
 	ctx.distinctColIdx = NULL;
+	ctx.root = root;
 
 	generate_multi_stage_tlists(&ctx,
 								p_tlist1,
@@ -3356,7 +3358,12 @@ has_functional_dependency(Var *from, Var *to, List *rangeTable)
 	/* Look up the relid of the "to" Var from the range table. */
 	rte = list_nth(rangeTable, to->varno - 1);
 	Assert(rte);
-	Assert(rte->rtekind == RTE_RELATION);
+
+	if (rte->rtekind != RTE_RELATION)
+	{
+		/* We don't have functional dependencies on subquery results. */
+		return false;
+	}
 
 	relid = rte->relid;
 
@@ -3437,6 +3444,76 @@ has_functional_dependency(Var *from, Var *to, List *rangeTable)
 	return to_is_primary;
 }
 
+struct groupdep_ctx
+{
+	List	*grps_tlist;
+	List	*rangeTable;
+	List	*add_tlist;
+};
+
+static bool
+find_group_dependent_targets(Node *node, struct groupdep_ctx *ctx)
+{
+	if (!node)
+		return false;
+
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+		ListCell   *grp_lc;
+		bool		has_dep = false;
+
+		foreach (grp_lc, ctx->grps_tlist)
+		{
+			TargetEntry *grp_tle = lfirst(grp_lc);
+			Expr		*grp_expr = grp_tle->expr;
+			Var			*grp_var;
+
+			if (!IsA(grp_expr, Var))
+			{
+				/*
+				 * Ignore any expressions that aren't Vars; they can't have
+				 * functional dependencies.
+				 */
+				continue;
+			}
+
+			grp_var = (Var *) grp_expr;
+
+			if (equal(var, grp_var))
+			{
+				/* Don't add duplicates. */
+				has_dep = false;
+				break;
+			}
+
+			if (!has_dep && has_functional_dependency(var, grp_var,
+													  ctx->rangeTable))
+			{
+				has_dep = true;
+			}
+		}
+
+		if (has_dep)
+		{
+			TargetEntry *copy;
+
+			/* Copy the entry so that it can later be added to grps_tlist. */
+			copy = makeTargetEntry(copyObject(var),
+								   list_length(ctx->grps_tlist)
+								   + list_length(ctx->add_tlist) + 1,
+								   NULL,
+								   false);
+
+			ctx->add_tlist = lappend(ctx->add_tlist, copy);
+		}
+
+		return false;
+	}
+
+	return expression_tree_walker(node, find_group_dependent_targets, ctx);
+}
+
 /* Function: deconstruct_agg_info
  *
  * Top-level deconstruction of the target list and having qual of an
@@ -3450,8 +3527,6 @@ deconstruct_agg_info(MppGroupContext *ctx)
 {
 	int			i;
 	ListCell   *lc;
-	List	   *rangeTable;
-	List	   *additional_grps_tlist = NIL;
 
 	/*
 	 * Initialize temporaries to hold the parts of the preliminary target list
@@ -3495,61 +3570,23 @@ deconstruct_agg_info(MppGroupContext *ctx)
 	 * are part of a relation that's already being grouped by a primary key,
 	 * which guarantees that tuples composed of these columns are unique).
 	 */
-	rangeTable = ctx->root->parse->rtable;
-	Assert(rangeTable);
-
-	foreach (lc, ctx->sub_tlist)
 	{
-		TargetEntry *tle = lfirst(lc);
-		Expr		*expr = tle->expr;
-		Var			*var;
-		ListCell	*grp_lc;
-		bool		 has_dep = false;
+		struct groupdep_ctx	gctx = {0};
 
-		Assert(IsA(expr, Var));
-		var = (Var *) expr;
+		gctx.grps_tlist = ctx->grps_tlist;
+		gctx.rangeTable = ctx->root->parse->rtable;
 
-		foreach (grp_lc, ctx->grps_tlist)
-		{
-			TargetEntry *grp_tle = lfirst(grp_lc);
-			Expr		*grp_expr = grp_tle->expr;
-			Var			*grp_var;
+		/*
+		 * Traverse the sub_tlist to find any Vars with dependencies on the
+		 * grps_tlist. They will be placed in gctx.add_tlist.
+		 */
+		expression_tree_walker((Node *) ctx->sub_tlist,
+							   find_group_dependent_targets, &gctx);
 
-			Assert(IsA(grp_expr, Var));
-			grp_var = (Var *) grp_expr;
-
-			if (equal(var, grp_var))
-			{
-				/* Don't add duplicates. */
-				has_dep = false;
-				break;
-			}
-
-			if (!has_dep && has_functional_dependency(var, grp_var, rangeTable))
-			{
-				has_dep = true;
-			}
-		}
-
-		if (has_dep)
-		{
-			TargetEntry *copy;
-
-			/* Copy the entry so that it can later be added to grps_tlist. */
-			copy = makeTargetEntry(copyObject(tle->expr),
-								   list_length(ctx->grps_tlist)
-								   + list_length(additional_grps_tlist) + 1,
-								   (tle->resname == NULL) ? NULL
-														  : pstrdup(tle->resname),
-								   false);
-			copy->ressortgroupref = tle->ressortgroupref;
-
-			additional_grps_tlist = lappend(additional_grps_tlist, copy);
-		}
+		/* Add any dependent targets we found to grps_tlist. */
+		ctx->grps_tlist = list_concat(ctx->grps_tlist, gctx.add_tlist);
+		ctx->numGroupCols += list_length(gctx.add_tlist);
 	}
-
-	ctx->grps_tlist = list_concat(ctx->grps_tlist, additional_grps_tlist);
-	ctx->numGroupCols += list_length(additional_grps_tlist);
 
 	/*
 	 * Continue to construct the target list for the preliminary Agg node by
