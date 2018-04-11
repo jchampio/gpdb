@@ -181,4 +181,6 @@ typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int conten
 
 extern void cdbgang_setAsync(bool async);
 
+Datum gp_gang_info(PG_FUNCTION_ARGS);
+
 #endif   /* _CDBGANG_H_ */

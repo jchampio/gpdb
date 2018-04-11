@@ -51,6 +51,8 @@
 
 #include "utils/guc_tables.h"
 
+#include "funcapi.h"
+
 #define MAX_CACHED_1_GANGS 1
 
 /*
@@ -1890,4 +1892,61 @@ cdbgang_setAsync(bool async)
 		pCreateGangFunc = pCreateGangFuncAsync;
 	else
 		pCreateGangFunc = pCreateGangFuncThreaded;
+}
+
+Datum
+gp_gang_info(PG_FUNCTION_ARGS)
+{
+	FuncCallContext	   *funcctx;
+	static const int	nattr = 4;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext	oldcontext;
+		TupleDesc		tupdesc;
+		Gang		   *writerGang;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		writerGang = AllocateWriterGang();
+
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		tupdesc = CreateTemplateTupleDesc(nattr, false);
+		TupleDescInitEntry(tupdesc, 1, "gangid",  INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, 2, "mode",    CHAROID, -1, 0);
+		TupleDescInitEntry(tupdesc, 3, "content", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, 4, "pid",     INT4OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		funcctx->user_fctx = writerGang;
+		funcctx->max_calls = writerGang->size;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[nattr] = {0};
+		bool		nulls[nattr] = {0};
+		HeapTuple	tuple;
+		Gang	   *writerGang = funcctx->user_fctx;
+		struct SegmentDatabaseDescriptor *dbdesc;
+
+		dbdesc = &writerGang->db_descriptors[funcctx->call_cntr];
+
+		values[0] = Int32GetDatum(writerGang->gang_id);
+		values[1] = CharGetDatum('w');
+		values[2] = Int32GetDatum(dbdesc->segindex);
+		values[3] = Int32GetDatum(dbdesc->backendPid);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	else
+	{
+		SRF_RETURN_DONE(funcctx);
+	}
 }
