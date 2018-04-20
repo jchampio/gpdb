@@ -37,7 +37,7 @@
 
  CREATE FUNCTION numeric_dec("numeric") RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'numeric_dec' WITH (OID=6997, DESCRIPTION="increment by one");
 
- CREATE FUNCTION gp_gang_info(OUT gangid int4, OUT mode "char", OUT content int4, OUT pid int4) RETURNS SETOF record LANGUAGE internal VOLATILE AS 'gp_gang_info' WITH (OID=6998, DESCRIPTION="TODO");
+ CREATE FUNCTION gp_gang_info(OUT gangid int4, OUT mode "char", OUT content int4, OUT host text, OUT port int4, OUT pid int4) RETURNS SETOF record LANGUAGE internal VOLATILE AS 'gp_gang_info' WITH (OID=6998, DESCRIPTION="TODO");
 
 
 -- Sequences and time series

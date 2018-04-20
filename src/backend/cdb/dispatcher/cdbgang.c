@@ -52,6 +52,7 @@
 #include "utils/guc_tables.h"
 
 #include "funcapi.h"
+#include "utils/builtins.h"
 
 #define MAX_CACHED_1_GANGS 1
 
@@ -1894,32 +1895,79 @@ cdbgang_setAsync(bool async)
 		pCreateGangFunc = pCreateGangFuncThreaded;
 }
 
+static char
+gang_type_to_char(GangType type)
+{
+	switch (type)
+	{
+	case GANGTYPE_PRIMARY_WRITER:
+		return 'w';
+
+	case GANGTYPE_PRIMARY_READER:
+		return 'r';
+
+	case GANGTYPE_ENTRYDB_READER:
+		return 'e';
+
+	case GANGTYPE_SINGLETON_READER:
+		return 's';
+
+	case GANGTYPE_UNALLOCATED:
+		return '-';
+
+	default:
+		return '?';
+	}
+}
+
 Datum
 gp_gang_info(PG_FUNCTION_ARGS)
 {
+	struct gang_ctx
+	{
+		List	   *gangs;
+		ListCell   *curpos;
+		int			iteroffset;
+	};
+
 	FuncCallContext	   *funcctx;
-	static const int	nattr = 4;
+	static const int	nattr = 6;
+	struct gang_ctx	   *user_fctx;
 
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext	oldcontext;
 		TupleDesc		tupdesc;
-		Gang		   *writerGang;
+		ListCell	   *lc;
 
 		funcctx = SRF_FIRSTCALL_INIT();
-		writerGang = AllocateWriterGang();
 
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		funcctx->user_fctx = user_fctx = palloc0(sizeof(*user_fctx));
+
+		user_fctx->gangs = list_make1(AllocateWriterGang());
+		user_fctx->gangs = list_concat(user_fctx->gangs, getAllAllocatedReaderGangs());
+		user_fctx->gangs = list_concat(user_fctx->gangs, getAllIdleReaderGangs());
+
+		user_fctx->curpos = list_head(user_fctx->gangs);
 
 		tupdesc = CreateTemplateTupleDesc(nattr, false);
 		TupleDescInitEntry(tupdesc, 1, "gangid",  INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, 2, "mode",    CHAROID, -1, 0);
 		TupleDescInitEntry(tupdesc, 3, "content", INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, 4, "pid",     INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, 4, "host",    TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, 5, "port",    INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, 6, "pid",     INT4OID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-		funcctx->user_fctx = writerGang;
-		funcctx->max_calls = writerGang->size;
+
+		funcctx->max_calls = 0;
+		foreach(lc, user_fctx->gangs)
+		{
+			Gang *g = lfirst(lc);
+			funcctx->max_calls += g->size;
+		}
 
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -1931,15 +1979,47 @@ gp_gang_info(PG_FUNCTION_ARGS)
 		Datum		values[nattr] = {0};
 		bool		nulls[nattr] = {0};
 		HeapTuple	tuple;
-		Gang	   *writerGang = funcctx->user_fctx;
+		Gang	   *gang;
+		int			segid;
 		struct SegmentDatabaseDescriptor *dbdesc;
+		CdbComponentDatabaseInfo *dbinfo;
 
-		dbdesc = &writerGang->db_descriptors[funcctx->call_cntr];
+		user_fctx = funcctx->user_fctx;
 
-		values[0] = Int32GetDatum(writerGang->gang_id);
-		values[1] = CharGetDatum('w');
+		do
+		{
+			gang = lfirst(user_fctx->curpos);
+			Assert(gang);
+
+			segid = funcctx->call_cntr - user_fctx->iteroffset;
+			if (segid >= gang->size)
+			{
+				user_fctx->curpos = lnext(user_fctx->curpos);
+				Assert(user_fctx->curpos);
+
+				user_fctx->iteroffset += gang->size;
+			}
+		}
+		while (segid >= gang->size);
+
+		dbdesc = &gang->db_descriptors[segid];
+		dbinfo = dbdesc->segment_database_info;
+
+		values[0] = Int32GetDatum(gang->gang_id);
+		values[1] = CharGetDatum(gang_type_to_char(gang->type));
 		values[2] = Int32GetDatum(dbdesc->segindex);
-		values[3] = Int32GetDatum(dbdesc->backendPid);
+
+		if (dbinfo->hostname)
+		{
+			values[3] = CStringGetTextDatum(dbinfo->hostname);
+		}
+		else
+		{
+			nulls[3] = true;
+		}
+
+		values[4] = Int32GetDatum(dbinfo->port);
+		values[5] = Int32GetDatum(dbdesc->backendPid);
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 
