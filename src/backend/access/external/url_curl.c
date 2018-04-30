@@ -639,6 +639,7 @@ fill_buffer(URL_CURL_FILE *curl, int want)
 	struct 	timeval timeout;
 	int 	nfds = 0, e = 0;
 	int     timeout_count = 0;
+	long	suggested_timeout;
 
 	/* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d",
 	   file->u.curl.still_running, curl->in.bot, curl->in.top, want);
@@ -654,8 +655,22 @@ fill_buffer(URL_CURL_FILE *curl, int want)
 		CHECK_FOR_INTERRUPTS();
 
 		/* set a suitable timeout to fail on */
-		timeout.tv_sec = 5;
-		timeout.tv_usec = 0;
+		if (0 != (e = curl_multi_timeout(multi_handle, &suggested_timeout)))
+		{
+			elog(ERROR, "internal error: curl_multi_timeout failed (%d - %s)",
+						e, curl_easy_strerror(e));
+		}
+
+		if (suggested_timeout >= 0)
+		{
+			timeout.tv_sec = suggested_timeout / 1000;
+			timeout.tv_usec = (suggested_timeout % 1000) * 1000;
+		}
+		else
+		{
+			timeout.tv_sec = 5;
+			timeout.tv_usec = 0;
+		}
 
 		/* get file descriptors from the transfers */
 		if (0 != (e = curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd)))
@@ -664,15 +679,23 @@ fill_buffer(URL_CURL_FILE *curl, int want)
 						e, curl_easy_strerror(e));
 		}
 
-		if (maxfd <= 0)
+		if (maxfd < 0)
 		{
 			elog(LOG, "curl_multi_fdset set maxfd = %d", maxfd);
-			curl->still_running = 0;
-			break;
+
+			/* Clamp the timeout to 100 ms, per libcurl documentation. */
+			if (timeout.tv_sec > 0)
+			{
+				timeout.tv_sec = 0;
+				timeout.tv_usec = 100000;
+			}
+			if (timeout.tv_usec > 100000)
+				timeout.tv_usec = 100000;
 		}
+
 		nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout);
 
-		if (nfds == -1)
+		if (nfds < 0)
 		{
 			if (errno == EINTR || errno == EAGAIN)
 			{
@@ -687,6 +710,8 @@ fill_buffer(URL_CURL_FILE *curl, int want)
 			// timeout
 			timeout_count++;
 
+			/* FIXME: now that we don't necessarily wait for 5 seconds, this is
+			 * wrong */
 			if (timeout_count % 12 == 0)
 			{
 				elog(LOG, "segment has not received data from gpfdist for about 1 minute, waiting for %d bytes.",
@@ -706,24 +731,18 @@ fill_buffer(URL_CURL_FILE *curl, int want)
 				break;
 			}
 		}
-		else if (nfds > 0)
-		{
-			/* timeout or readable/writable sockets */
-			/* note we *could* be more efficient and not wait for
-			 * CURLM_CALL_MULTI_PERFORM to clear here and check it on re-entry
-			 * but that gets messy */
-			while (CURLM_CALL_MULTI_PERFORM ==
-				   (e = curl_multi_perform(multi_handle, &curl->still_running)));
 
-			if (e != 0)
-			{
-				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
-					 e, curl_easy_strerror(e));
-			}
-		}
-		else
+		/* timeout or readable/writable sockets */
+		/* note we *could* be more efficient and not wait for
+		 * CURLM_CALL_MULTI_PERFORM to clear here and check it on re-entry
+		 * but that gets messy */
+		while (CURLM_CALL_MULTI_PERFORM ==
+			   (e = curl_multi_perform(multi_handle, &curl->still_running)));
+
+		if (e != 0)
 		{
-			elog(ERROR, "select return unexpected result");
+			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
+				 e, curl_easy_strerror(e));
 		}
 
 		/* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d",
@@ -1109,7 +1128,7 @@ url_curl_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate)
 	CURL_EASY_SETOPT(file->curl->handle, CURLOPT_HEADERFUNCTION, header_callback);
 
 	/* 'file' is the application variable that gets passed to header_callback */
-	CURL_EASY_SETOPT(file->curl->handle, CURLOPT_WRITEHEADER, file);
+	CURL_EASY_SETOPT(file->curl->handle, CURLOPT_HEADERDATA, file);
 
 	/* set callback for each data block arriving from server to be written to application */
 	CURL_EASY_SETOPT(file->curl->handle, CURLOPT_WRITEFUNCTION, write_callback);
