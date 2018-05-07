@@ -1931,8 +1931,9 @@ gp_gang_info(PG_FUNCTION_ARGS)
 	};
 
 	FuncCallContext	   *funcctx;
-	static const int	nattr = 6;
 	struct gang_ctx	   *user_fctx;
+
+#define GANGINFO_NATTR	6
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -1952,7 +1953,7 @@ gp_gang_info(PG_FUNCTION_ARGS)
 
 		user_fctx->curpos = list_head(user_fctx->gangs);
 
-		tupdesc = CreateTemplateTupleDesc(nattr, false);
+		tupdesc = CreateTemplateTupleDesc(GANGINFO_NATTR, false);
 		TupleDescInitEntry(tupdesc, 1, "gangid",  INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, 2, "type",    CHAROID, -1, 0);
 		TupleDescInitEntry(tupdesc, 3, "content", INT4OID, -1, 0);
@@ -1976,8 +1977,8 @@ gp_gang_info(PG_FUNCTION_ARGS)
 
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
-		Datum		values[nattr] = {0};
-		bool		nulls[nattr] = {0};
+		Datum		values[GANGINFO_NATTR] = {0};
+		bool		nulls[GANGINFO_NATTR] = {0};
 		HeapTuple	tuple;
 		Gang	   *gang;
 		int			segid;
@@ -2029,4 +2030,5 @@ gp_gang_info(PG_FUNCTION_ARGS)
 	{
 		SRF_RETURN_DONE(funcctx);
 	}
+#undef GANGINFO_NATTR
 }
