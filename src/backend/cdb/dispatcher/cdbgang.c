@@ -1954,7 +1954,7 @@ gp_gang_info(PG_FUNCTION_ARGS)
 
 		tupdesc = CreateTemplateTupleDesc(nattr, false);
 		TupleDescInitEntry(tupdesc, 1, "gangid",  INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, 2, "mode",    CHAROID, -1, 0);
+		TupleDescInitEntry(tupdesc, 2, "type",    CHAROID, -1, 0);
 		TupleDescInitEntry(tupdesc, 3, "content", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, 4, "host",    TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, 5, "port",    INT4OID, -1, 0);
