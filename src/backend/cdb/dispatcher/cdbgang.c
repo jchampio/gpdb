@@ -1895,6 +1895,9 @@ cdbgang_setAsync(bool async)
 		pCreateGangFunc = pCreateGangFuncThreaded;
 }
 
+/*
+ * Used by gp_gang_info() to find a single character that represents a GangType.
+ */
 static char
 gang_type_to_char(GangType type)
 {
@@ -1920,23 +1923,31 @@ gang_type_to_char(GangType type)
 	}
 }
 
+/*
+ * Returns a list of rows, each corresponding to a gang member.
+ *
+ * SELECT * from gp_gang_info();
+ */
 Datum
 gp_gang_info(PG_FUNCTION_ARGS)
 {
+	/* Our struct for funcctx->user_fctx. */
 	struct gang_ctx
 	{
-		List	   *gangs;
-		ListCell   *curpos;
-		int			iteroffset;
+		List	   *gangs;		/* the Gang entries we will output */
+		ListCell   *curpos;		/* pointer to our current position in .gangs */
+		int			iteroffset; /* row index of the current gang; see below */
 	};
 
 	FuncCallContext	   *funcctx;
 	struct gang_ctx	   *user_fctx;
 
+	/* Number of attributes we'll return per row. Must match the catalog. */
 #define GANGINFO_NATTR	6
 
 	if (SRF_IS_FIRSTCALL())
 	{
+		/* Standard first-call setup. */
 		MemoryContext	oldcontext;
 		TupleDesc		tupdesc;
 		ListCell	   *lc;
@@ -1947,12 +1958,14 @@ gp_gang_info(PG_FUNCTION_ARGS)
 
 		funcctx->user_fctx = user_fctx = palloc0(sizeof(*user_fctx));
 
+		/* Construct the list of all known gangs. */
 		user_fctx->gangs = list_make1(AllocateWriterGang());
 		user_fctx->gangs = list_concat(user_fctx->gangs, getAllAllocatedReaderGangs());
 		user_fctx->gangs = list_concat(user_fctx->gangs, getAllIdleReaderGangs());
 
 		user_fctx->curpos = list_head(user_fctx->gangs);
 
+		/* Create a descriptor for the records we'll be returning. */
 		tupdesc = CreateTemplateTupleDesc(GANGINFO_NATTR, false);
 		TupleDescInitEntry(tupdesc, 1, "gangid",  INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, 2, "type",    CHAROID, -1, 0);
@@ -1963,6 +1976,7 @@ gp_gang_info(PG_FUNCTION_ARGS)
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
+		/* Tell the caller how many rows we'll return. */
 		funcctx->max_calls = 0;
 		foreach(lc, user_fctx->gangs)
 		{
@@ -1977,40 +1991,57 @@ gp_gang_info(PG_FUNCTION_ARGS)
 
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
+		/* Construct and return a row. */
 		Datum		values[GANGINFO_NATTR] = {0};
 		bool		nulls[GANGINFO_NATTR] = {0};
 		HeapTuple	tuple;
 		Gang	   *gang;
-		int			segid;
+		int			descindex;
 		struct SegmentDatabaseDescriptor *dbdesc;
 		CdbComponentDatabaseInfo *dbinfo;
 
 		user_fctx = funcctx->user_fctx;
 
+		/* Figure out which Gang and SegmentDatabaseDescriptor to use. */
 		do
 		{
 			gang = lfirst(user_fctx->curpos);
 			Assert(gang);
 
-			segid = funcctx->call_cntr - user_fctx->iteroffset;
-			if (segid >= gang->size)
+			/*
+			 * iteroffset stores the row index of the first descriptor in the
+			 * current Gang. Since funcctx only gives us the number of times
+			 * we've been called, we use iteroffset to figure out which DB
+			 * descriptor we should use to fill in the current row.
+			 */
+			descindex = funcctx->call_cntr - user_fctx->iteroffset;
+			if (descindex >= gang->size)
 			{
+				/*
+				 * If we're past the end of the current Gang, go to the next.
+				 * Adjust iteroffset accordingly.
+				 */
 				user_fctx->curpos = lnext(user_fctx->curpos);
 				Assert(user_fctx->curpos);
 
 				user_fctx->iteroffset += gang->size;
 			}
 		}
-		while (segid >= gang->size);
+		while (descindex >= gang->size);
+		/*
+		 * loop postcondition: gang points to a valid Gang, and descindex is a
+		 * valid index into gang->db_descriptors.
+		 */
 
-		dbdesc = &gang->db_descriptors[segid];
+		/* Fill in the row attributes. */
+		dbdesc = &gang->db_descriptors[descindex];
 		dbinfo = dbdesc->segment_database_info;
 
-		values[0] = Int32GetDatum(gang->gang_id);
-		values[1] = CharGetDatum(gang_type_to_char(gang->type));
-		values[2] = Int32GetDatum(dbdesc->segindex);
+		values[0] = Int32GetDatum(gang->gang_id);					/* gangid */
+		values[1] = CharGetDatum(gang_type_to_char(gang->type));	/* type */
+		values[2] = Int32GetDatum(dbdesc->segindex);				/* content */
 
-		if (dbinfo->hostname)
+		if (dbinfo->hostname)										/* host */
 		{
 			values[3] = CStringGetTextDatum(dbinfo->hostname);
 		}
@@ -2019,9 +2050,10 @@ gp_gang_info(PG_FUNCTION_ARGS)
 			nulls[3] = true;
 		}
 
-		values[4] = Int32GetDatum(dbinfo->port);
-		values[5] = Int32GetDatum(dbdesc->backendPid);
+		values[4] = Int32GetDatum(dbinfo->port);					/* port */
+		values[5] = Int32GetDatum(dbdesc->backendPid);				/* pid */
 
+		/* Form the new tuple using our attributes and return it. */
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
