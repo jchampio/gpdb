@@ -232,6 +232,9 @@ def discoverPasswordMap():
     else:
         return True
 
+def remoteCommand(hostname, cmd):
+    return Command(hostname, cmd, NAKED, hostname, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+
 # True is an error
 def dedupeHosts():
 
@@ -262,7 +265,7 @@ def dedupeHosts():
 
     try:
         for host in hosts.keys():
-            cmd = Command(host, "hostname", NAKED, host, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = remoteCommand(host, "hostname")
             pool.addCommand(cmd)
 
         pool.join()
@@ -313,7 +316,7 @@ def checkUsernames():
     try:
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
-            cmd = Command(uh.address, "id %s" % options.user, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = remoteCommand(uh.address, "id %s" % options.user)
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -371,7 +374,7 @@ def addUserIfRequired():
             if uh.userExists:
                 continue
 
-            cmd = Command(uh.address, getAddUserCommand(), NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = remoteCommand(uh.address, getAddUserCommand())
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -449,7 +452,7 @@ def  simpleRemoteCommand(cmdStr, checkError=True, verbose=True):
     try:
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
-            cmd = Command(uh.address, cmdStr, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = remoteCommand(uh.address, cmdStr)
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -625,7 +628,7 @@ def copyOverSoftware():
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
             cmdStr = "%s %s.tar" % (md5Command(), installation_info.install_binary_path)
-            cmd = Command(uh.address, cmdStr, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = remoteCommand(uh.address, cmdStr)
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -699,7 +702,7 @@ def verifyVersionAtPath(usepath):
     try:
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
-            cmd = Command(uh.address, cmdStr, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = remoteCommand(uh.address, cmdStr)
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
