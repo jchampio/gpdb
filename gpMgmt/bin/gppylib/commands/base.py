@@ -575,7 +575,7 @@ class NakedExecutionContext(LocalExecutionContext):
             stdin, stdout, stderr = self.client.exec_command(cmd.cmdStr)
             rc = stdout.channel.recv_exit_status()
             self.completed = True
-            cmd.set_results(CommandResult(rc, stdout.readlines(), stderr.readlines(), self.completed, self.halt))
+            cmd.set_results(CommandResult(rc, stdout.read(), stderr.read(), self.completed, self.halt))
             stdin.close()
             stdout.close()
             stderr.close()

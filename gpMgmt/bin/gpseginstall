@@ -275,7 +275,7 @@ def dedupeHosts():
             if i.results.rc or i.results.halt or not i.results.completed:
                 logger.error("error obtaining information from host %s" % address)
                 return True
-            hostname = i.results.stdout[0].strip()
+            hostname = i.results.stdout.strip()
             hosts[address].hostname = hostname
     except Exception, e:
         logger.error("%s" % e.__str__())
@@ -638,7 +638,7 @@ def copyOverSoftware():
                 logger.error("%s: %s" % (address, i.results.stderr))
                 failures.add(address)
             else:
-                fields = i.results.stdout[0].split()
+                fields = i.results.stdout.split()
                 if len(fields) == md5OutputWords():
                     md5 = fields[0].strip()
                     if md5 != installation_info.install_md5:
@@ -713,7 +713,7 @@ def verifyVersionAtPath(usepath):
             if not i.results.stdout:
                 logger.error("could not find version string from host %s with command: %s" % (i.remoteHost, cmdStr))
                 return True
-            version_string = i.results.stdout[0].strip()
+            version_string = i.results.stdout.strip()
             if version_string != installation_info.install_version_string:
                 logger.error("version string on host %s: '%s' does not match expected: '%s'" % (i.remoteHost, version_string, installation_info.install_version_string))
                 return True
