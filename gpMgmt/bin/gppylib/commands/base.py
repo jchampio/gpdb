@@ -366,7 +366,7 @@ def setExecutionContextFactory(factory):
     gExecutionContextFactory = factory
 
 
-def createExecutionContext(execution_context_id, remoteHost, stdin, nakedExecutionInfo=None, gphome=None):
+def createExecutionContext(execution_context_id, remoteHost, stdin, nakedExecutionInfo=None, gphome=None, sourceGPDB=True):
     if gExecutionContextFactory is not None:
         return gExecutionContextFactory.createExecutionContext(execution_context_id, remoteHost, stdin)
     elif execution_context_id == LOCAL:
@@ -374,7 +374,7 @@ def createExecutionContext(execution_context_id, remoteHost, stdin, nakedExecuti
     elif execution_context_id == REMOTE:
         if remoteHost is None:
             raise Exception("Programmer Error.  Specified REMOTE execution context but didn't provide a remoteHost")
-        return RemoteExecutionContext(remoteHost, stdin, gphome)
+        return RemoteExecutionContext(remoteHost, stdin, gphome, sourceGPDB)
     elif execution_context_id == RMI:
         return RMIExecutionContext()
     elif execution_context_id == NAKED:
@@ -628,9 +628,17 @@ class RemoteExecutionContext(LocalExecutionContext):
     Leaves a trail of hosts to which we've ssh'ed, during the life of a particular interpreter.
     """
 
-    def __init__(self, targetHost, stdin, gphome=None):
+    def __init__(self, targetHost, stdin, gphome=None, sourceGPDB=True):
+        """
+        targetHost: hostname of the machine to execute on
+        stdin: TODO
+        gphome: the location of greenplum_path.sh. Set to GPHOME if None.
+        sourceGPDB: whether to source greenplum_path.sh before running this
+                    command (defaults to True)
+        """
         LocalExecutionContext.__init__(self, stdin)
         self.targetHost = targetHost
+        self.sourceGPDB = sourceGPDB
         if gphome:
             self.gphome = gphome
         else:
@@ -646,11 +654,16 @@ class RemoteExecutionContext(LocalExecutionContext):
         for k in keys:
             cmd.cmdStr = "%s=%s && %s" % (k, cmd.propagate_env_map[k], cmd.cmdStr)
 
+        # Do we want to source greenplum_path.sh at all?
+        source_path = ""
+        if self.sourceGPDB:
+            source_path = ". {}/greenplum_path.sh;".format(self.gphome)
+
         # Escape " for remote execution otherwise it interferes with ssh
         cmd.cmdStr = cmd.cmdStr.replace('"', '\\"')
         cmd.cmdStr = "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 " \
                      "{targethost} \"{gphome} {cmdstr}\"".format(targethost=self.targetHost,
-                                                                 gphome=". %s/greenplum_path.sh;" % self.gphome,
+                                                                 gphome=source_path,
                                                                  cmdstr=cmd.cmdStr)
         LocalExecutionContext.execute(self, cmd)
         if (cmd.get_results().stderr.startswith('ssh_exchange_identification: Connection closed by remote host')):
@@ -684,11 +697,12 @@ class Command:
     exec_context = None
     propagate_env_map = {}  # specific environment variables for this command instance
 
-    def __init__(self, name, cmdStr, ctxt=LOCAL, remoteHost=None, stdin=None, nakedExecutionInfo=None, gphome=None):
+    def __init__(self, name, cmdStr, ctxt=LOCAL, remoteHost=None, stdin=None,
+                 nakedExecutionInfo=None, gphome=None, sourceGPDB=True):
         self.name = name
         self.cmdStr = cmdStr
         self.exec_context = createExecutionContext(ctxt, remoteHost, stdin=stdin, nakedExecutionInfo=nakedExecutionInfo,
-                                                   gphome=gphome)
+                                                   gphome=gphome, sourceGPDB=sourceGPDB)
         self.remoteHost = remoteHost
 
     def __str__(self):

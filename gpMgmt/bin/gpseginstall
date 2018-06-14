@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER] [-g|--group GROUP] [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS] [--verbose]
+USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER] [-g|--group GROUP]
+                      [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS]
+                      [--verbose] [--disable-password-discovery]
+
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. The default is gpadmin. (root only option)
          where GROUP will be the group to install the software as. The default is gpadmin.
@@ -29,7 +32,9 @@ try:
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
     from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
-    from gppylib.commands.base import WorkerPool, Command, NakedExecutionPasswordMap, NakedExecutionInfo, NAKED
+    from gppylib.commands.base import WorkerPool, Command, \
+                                      NakedExecutionPasswordMap, \
+                                      NakedExecutionInfo, NAKED, REMOTE
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -46,6 +51,7 @@ logging.getLogger('paramiko.transport').addHandler(nullFile)
 pool = None
 gphome = None
 installation_info = None
+discover_passwords = True
 commands = set() # selected commands
 rootCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l', 'v']) # valid command types for root
 nonRootCommands = set(['s', 'e', 'v'])                       # valid command types for non-root user
@@ -112,6 +118,8 @@ def parseargs():
     parser.add_option('-g', '--group', type='string')
     parser.add_option('-p', '--password', type='string')
     parser.add_option('-c', '--commands', type='string')
+    parser.add_option('--disable-password-discovery', action='store_true',
+                      dest='disable_password_discovery')
     parser.add_option('--verbose', action='store_true')
     (options, args) = parser.parse_args()
 
@@ -187,6 +195,13 @@ def parseargs():
     global installation_info
     installation_info = InstallationInfo(link_name, binary_path, binary_dir_location, binary_dir_name)
     logger.info("Installation Info:\n" + installation_info.debugStr())
+
+    global discover_passwords
+    if options.disable_password_discovery:
+        if ('e' in commands) or ('E' in commands):
+            logger.error("--disable-password-discovery cannot be combined with the '-c e' or '-c E' key-exchange commands")
+            return True
+        discover_passwords = False
  
     return False
 
@@ -233,7 +248,13 @@ def discoverPasswordMap():
         return True
 
 def remoteCommand(hostname, cmd):
-    return Command(hostname, cmd, NAKED, hostname, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+    if passwordMap is None:
+        # We don't have a greenplum_path.sh installed throughout much of this
+        # utility's execution, so set sourceGPDB to False.
+        cmd = Command(hostname, cmd, REMOTE, hostname, sourceGPDB=False)
+    else:
+        cmd = Command(hostname, cmd, NAKED, hostname, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+    return cmd
 
 # True is an error
 def dedupeHosts():
@@ -928,8 +949,9 @@ try:
     if (readHostList()):
         earlyExit(True)
 
-    if (discoverPasswordMap()):
-        earlyExit(True)
+    if discover_passwords:
+        if (discoverPasswordMap()):
+            earlyExit(True)
 
     if (dedupeHosts()):
         earlyExit(True)

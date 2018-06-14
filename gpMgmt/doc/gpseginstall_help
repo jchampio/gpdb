@@ -122,6 +122,24 @@ Database is started/initialized. This option is only available when you run
 gpseginstall as root. The default is gpadmin. 
 
 
+--disable-password-discovery
+
+By default, gpseginstall will prompt for passwords for any hosts that cannot be
+accessed with the current set of system SSH keys, and these passwords will be
+cached for use by later steps in the installation.  This discovery mechanism is
+incompatible with some SSH configurations -- specifically, systems using PKCS#8
+private keys, which are commonly in use in FIPS-compliant environments. This may
+cause gpseginstall to incorrectly prompt for passwords even when host keys are
+already installed.
+
+The --disable-password-discovery option disables this caching mechanism and
+forces gpseginstall to use the system's native SSH client instead, allowing
+users to work around this issue.
+
+This option cannot be used in combination with the '-c E' and '-c e'
+key-exchange commands.
+
+
 --help (help)
 
 Displays the online help.
