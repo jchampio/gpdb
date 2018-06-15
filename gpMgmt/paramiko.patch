@@ -1,0 +1,71 @@
+diff --git a/paramiko/__init__.py b/paramiko/__init__.py
+index 9e2ba01..1c3f23d 100644
+--- a/paramiko/__init__.py
++++ b/paramiko/__init__.py
+@@ -34,7 +34,7 @@ from paramiko.ssh_gss import GSSAuth, GSS_AUTH_AVAILABLE
+ from paramiko.channel import Channel, ChannelFile
+ from paramiko.ssh_exception import SSHException, PasswordRequiredException, \
+     BadAuthenticationType, ChannelException, BadHostKeyException, \
+-    AuthenticationException, ProxyCommandFailure
++    AuthenticationException, ProxyCommandFailure, PKCS8NotSupportedException
+ from paramiko.server import ServerInterface, SubsystemHandler, InteractiveQuery
+ from paramiko.rsakey import RSAKey
+ from paramiko.dsskey import DSSKey
+@@ -78,6 +78,7 @@ __all__ = [ 'Transport',
+             'DSSKey',
+             'Message',
+             'SSHException',
++            'PKCS8NotSupportedException',
+             'AuthenticationException',
+             'PasswordRequiredException',
+             'BadAuthenticationType',
+diff --git a/paramiko/pkey.py b/paramiko/pkey.py
+index 7f32c8a..18241c1 100644
+--- a/paramiko/pkey.py
++++ b/paramiko/pkey.py
+@@ -30,7 +30,8 @@ from Crypto.Cipher import DES3, AES
+ from paramiko import util
+ from paramiko.common import o600, zero_byte
+ from paramiko.py3compat import u, encodebytes, decodebytes, b
+-from paramiko.ssh_exception import SSHException, PasswordRequiredException
++from paramiko.ssh_exception import SSHException, PasswordRequiredException, \
++                                   PKCS8NotSupportedException
+ 
+ 
+ class PKey (object):
+@@ -259,9 +260,15 @@ class PKey (object):
+     def _read_private_key(self, tag, f, password=None):
+         lines = f.readlines()
+         start = 0
++        pkcs8 = False
+         while (start < len(lines)) and (lines[start].strip() != '-----BEGIN ' + tag + ' PRIVATE KEY-----'):
++            if (lines[start].strip() == '-----BEGIN PRIVATE KEY-----' or
++                lines[start].strip() == '-----BEGIN ENCRYPTED PRIVATE KEY-----'):
++                pkcs8 = True
+             start += 1
+         if start >= len(lines):
++            if pkcs8:
++                raise PKCS8NotSupportedException('private key file is in PKCS#8 format, which is unsupported')
+             raise SSHException('not a valid ' + tag + ' private key file')
+         # parse any headers first
+         headers = {}
+diff --git a/paramiko/ssh_exception.py b/paramiko/ssh_exception.py
+index ed36a95..b56fed7 100644
+--- a/paramiko/ssh_exception.py
++++ b/paramiko/ssh_exception.py
+@@ -25,6 +25,15 @@ class SSHException (Exception):
+     """
+     pass
+ 
++class PKCS8NotSupportedException (SSHException):
++    """
++    Exception raised when a PKCS#8 private key is encountered. (Paramiko
++    currently doesn't support the PKCS#8 format.)
++
++    .. versionadded:: 1.18
++    """
++    pass
++
+ 
+ class AuthenticationException (SSHException):
+     """

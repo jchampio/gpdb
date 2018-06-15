@@ -471,9 +471,11 @@ class NakedExecutionPasswordMap:
         self.mapping = dict()
         self.unique_passwords = set()
         self.complete = False
+        self.logger = logger
 
     # this method throws exceptions on error to create a valid list
     def discover(self):
+        prompted_pkcs8 = False
 
         for host in self.hostlist:
             client = paramiko.SSHClient()
@@ -485,6 +487,22 @@ class NakedExecutionPasswordMap:
                 self.mapping[host] = None
                 client.close()
                 continue  # next host
+            except paramiko.PKCS8NotSupportedException:
+                # XXX Since Paramiko doesn't yet support PKCS#8 keys, it's
+                # possible for users to find themselves in a position where they
+                # already installed keys for their hosts, but we end up
+                # prompting for a password anyway. gpseginstall (the only caller
+                # of this code at time of writing) has an option to bypass this
+                # problem, but users are unlikely to be aware of it unless we
+                # tell them about it here.
+                if not prompted_pkcs8:
+                    prompted_pkcs8 = True # Only display this once.
+                    self.logger.warning("This utility has encountered a PKCS#8 " +
+                        "private key and is unable to use it during password " +
+                        "discovery. You may encounter unexpected password " +
+                        "prompts, despite being able to use passwordless ssh " +
+                        "between hosts. See --help and the --disable-password-discovery " +
+                        "option for more details.")
             except Exception, e:
                 pass
 
