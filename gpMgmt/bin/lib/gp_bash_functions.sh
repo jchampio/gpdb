@@ -244,7 +244,31 @@ LOG_MSG () {
 		fi
 		if [ $VERBOSE ]; then
 			if [ $DEBUG_LEVEL -eq 1 ] || [ $DISPLAY_TXT -eq 1 ];then
-				$ECHO "$1"
+				# We only want to print the level for important messages. Be
+				# *very* conservative -- the message format is not fixed, and we
+				# don't want to accidentally swallow log information. If in
+				# doubt, simply print the entire message: ugliness can be
+				# cleaned up on a case-by-case basis, and it's much more
+				# acceptable than losing important output.
+
+				level=${level#[} # strip any leading bracket
+				msg=${1#*]}      # message is everything after the first end bracket
+				msg=${msg#:-}    # strip any ":-" prefix
+
+				case "$level" in
+				WARN | ERROR | FATAL)
+					# print the level as-is
+					$ECHO "$level: $msg"
+					;;
+				INFO)
+					# don't print the level at all
+					$ECHO "$msg"
+					;;
+				*)
+					# no idea what this is; print the message as-is
+					$ECHO "$1"
+					;;
+				esac
 			fi
 		fi
 		$ECHO "${TIMESTAMP}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
