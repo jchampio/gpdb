@@ -49,7 +49,7 @@ def get_default_logger():
 
     if _LOGGER is None:
         _LOGGER = logging.getLogger('default')
-        _SOUT_HANDLER = EncodingStreamHandler(sys.stdout)
+        _SOUT_HANDLER = UserOutputHandler(sys.stdout)
         _SOUT_HANDLER.setFormatter(_get_user_formatter())
         _LOGGER.addHandler(_SOUT_HANDLER)
         _LOGGER.setLevel(logging.INFO)
@@ -266,7 +266,7 @@ def _get_literal_formatter():
     Returns the literal formatter, constructing it if needed.
 
     The literal formatter formats the input string exactly as it was received.
-    It is only used by the log_literal() function.
+    It's used by the log_literal() function and the UserOutputHandler.
     
     NOTE: internal use only
     """
@@ -347,3 +347,30 @@ class EncodingStreamHandler(logging.StreamHandler):
         if not isinstance(record.msg, unicode):
             record.msg = unicode(record.msg, 'utf-8')
         logging.StreamHandler.emit(self, record)
+
+class UserOutputHandler(EncodingStreamHandler):
+    """
+    An EncodingStreamHandler that suppresses INFO prefixes in output; any INFO
+    records will be formatted as "%(message)s".
+    """
+    def __init__(self, strm=None):
+        EncodingStreamHandler.__init__(self, strm)
+        self._infoFormatter = _get_literal_formatter()
+
+    def emit(self, record):
+        saved_formatter = self.formatter
+
+        if record.levelno == logging.INFO:
+            # No log prefixes for this record.
+            #
+            # XXX Anyone who explicitly sets a different formatter on purpose
+            # will be frustrated by this override. It feels like this logic
+            # should be in the Formatter itself -- but subclassing Formatter
+            # seems like a lot more work?
+            self.setFormatter(self._infoFormatter)
+
+        try:
+            EncodingStreamHandler.emit(self, record)
+        finally:
+            # Make sure we put things back the way they were.
+            self.setFormatter(saved_formatter)
