@@ -49,9 +49,8 @@ def get_default_logger():
 
     if _LOGGER is None:
         _LOGGER = logging.getLogger('default')
-        f = _get_default_formatter()
         _SOUT_HANDLER = EncodingStreamHandler(sys.stdout)
-        _SOUT_HANDLER.setFormatter(f)
+        _SOUT_HANDLER.setFormatter(_get_user_formatter())
         _LOGGER.addHandler(_SOUT_HANDLER)
         _LOGGER.setLevel(logging.INFO)
 
@@ -97,6 +96,7 @@ def setup_tool_logging(appName, hostname, userName, logdir=None, nonuser=False):
       - Logs output to a file, typically in ~/gpAdminLogs
     """
     global _DEFAULT_FORMATTER
+    global _USER_FORMATTER
     global _APP_NAME_FOR_DEFAULT_FORMAT
 
     logger_name = "%s:%s" % (hostname, userName)
@@ -111,10 +111,10 @@ def setup_tool_logging(appName, hostname, userName, logdir=None, nonuser=False):
     #
     logger = get_default_logger()
     logger.name = logger_name
+    _USER_FORMATTER = None
+    _SOUT_HANDLER.setFormatter(_get_user_formatter())
     _DEFAULT_FORMATTER = None
-    f = _get_default_formatter()
-    _SOUT_HANDLER.setFormatter(f)
-    _FILE_HANDLER.setFormatter(f)
+    _FILE_HANDLER.setFormatter(_get_default_formatter())
 
     return logger
 
@@ -193,9 +193,8 @@ def log_literal(logger, lvl, msg):
     logger.log(lvl, msg)
 
     # Restore default formatter
-    f = _get_default_formatter()
-    _SOUT_HANDLER.setFormatter(f)
-    _FILE_HANDLER.setFormatter(f)
+    _SOUT_HANDLER.setFormatter(_get_user_formatter())
+    _FILE_HANDLER.setFormatter(_get_default_formatter())
 
     return
 
@@ -225,6 +224,7 @@ _LOGGER = None
 _FILENAME = None
 _DEFAULT_FORMATTER = None
 _LITERAL_FORMATTER = None
+_USER_FORMATTER = None
 _SOUT_HANDLER = None
 _FILE_HANDLER = None
 _APP_NAME_FOR_DEFAULT_FORMAT = os.path.split(sys.argv[0])[-1]
@@ -274,6 +274,21 @@ def _get_literal_formatter():
     if _LITERAL_FORMATTER is None:
         _LITERAL_FORMATTER = logging.Formatter()
     return _LITERAL_FORMATTER
+
+
+def _get_user_formatter():
+    """
+    Returns the user-friendly formatter, constructing it if needed.
+
+    The user formatter formats the input string with only a log-level prefix (no
+    date, PID, etc.). It's meant for use with stdout/stderr.
+
+    NOTE: internal use only
+    """
+    global _USER_FORMATTER
+    if _USER_FORMATTER is None:
+        _USER_FORMATTER = logging.Formatter("%(levelname)s: %(message)s")
+    return _USER_FORMATTER
 
 
 def _enable_gpadmin_logging(name, logdir=None):
