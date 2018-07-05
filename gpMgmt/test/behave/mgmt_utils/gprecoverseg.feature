@@ -114,7 +114,7 @@ Feature: gprecoverseg tests
         Then the saved mirror segment is marked down in config
 
         When user runs the command "gpfaultinjector -y skip -f change_tracking_disable" with the saved "primary" segment option
-        Given the database "gptest1" does not exist
+        # Given the database "gptest1" does not exist
         Then wait until the segment state of the corresponding primary goes in ChangeTrackingDisabled
 
         When the user runs "gprecoverseg -a"
