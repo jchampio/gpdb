@@ -156,10 +156,11 @@ class GpLog(object):
     def _test_connection(host='localhost',port=_DEFAULT_PORT, user=_DEFAULT_USER,
                          dbname=_DEFAULT_USER):
         try:
-            connect(DbURL(hostname=host,
-                          port=port,
-                          dbname=dbname,
-                          username=user))
+            url = DbURL(hostname=host,
+                        port=port,
+                        dbname=dbname,
+                        username=user)
+            connect(url).close()
         except Exception, expt:
             tinctest.logger.error("Failed to connect to hostname %s, port %s, database %s, as user %s"
                                   % (host, port, dbname, user))

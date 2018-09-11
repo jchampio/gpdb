@@ -5,14 +5,13 @@
 """
 TODO: module docs
 """
-import sys
 import os
 import stat
+import sys
 
 try:
-    from pygresql import pgdb
+    import pgdb
     from gppylib.commands.unix import UserId
-
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -150,91 +149,87 @@ class DbURL:
         return "%s:%d:%s:%s:%s" % \
             (canonicalize(self.pghost),self.pgport,self.pgdb,self.pguser,self.pgpass)
 
+class ClosingConnection(pgdb.Connection):
+    def __init__(self, connection):
+        self._impl = connection
+
+    def __enter__(self):
+        return self._impl.__enter__()
+
+    def __exit__(self, *args):
+        exit_return = self._impl.__exit__(*args)
+        self._impl.close()
+        return exit_return
+
+    def __getattr__(self, name):
+        return getattr(self._impl, name)
 
 def connect(dburl, utility=False, verbose=False,
             encoding=None, allowSystemTableMods=False, logConn=True):
 
+    conninfo = {
+        'user': dburl.pguser,
+        'password': dburl.pgpass,
+        'host': dburl.pghost,
+        'port': int(dburl.pgport),
+        'database': dburl.pgdb,
+    }
+
+    # building options
+    options = ""
     if utility:
-        options = '-c gp_session_role=utility'
-    else:
-        options = ''
+        options += '-c gp_session_role=utility '
 
     # MPP-13779, et al
     if allowSystemTableMods:
-        options += ' -c allow_system_table_mods=true'
+        options += '-c allow_system_table_mods=true '
 
-    # bypass pgdb.connect() and instead call pgdb._connect_
-    # to avoid silly issues with : in ipv6 address names and the url string
-    #
-    dbbase   = dburl.pgdb
-    dbhost   = dburl.pghost
-    dbport   = int(dburl.pgport)
-    dbopt    = options
-    dbtty    = "1"
-    dbuser   = dburl.pguser
-    dbpasswd = dburl.pgpass
-    timeout  = dburl.timeout
-    cnx      = None
-
-    # All quotation and escaping here are to handle database name containing
-    # special characters like ' and \ and white spaces.
-
-    # Need to escape backslashes and single quote in db name
-    # Also single quoted the connection string for dbname
-    dbbase = dbbase.replace('\\', '\\\\')
-    dbbase = dbbase.replace('\'', '\\\'')
+    if options:
+        conninfo['options'] = options
 
     # MPP-14121, use specified connection timeout
     # Single quote the connection string for dbbase name
-    if timeout is not None:
-        cstr    = "dbname='%s' connect_timeout=%s" % (dbbase, timeout)
+    retries = 1
+    if dburl.timeout is not None:
+        conninfo['connection_timeout'] = dburl.timeout
         retries = dburl.retries
-    else:
-        cstr    = "dbname='%s'" % dbbase
-        retries = 1
 
     # This flag helps to avoid logging the connection string in some special
     # situations as requested
-    if (logConn == True):
-        (logger.info if timeout is not None else logger.debug)("Connecting to %s" % cstr)
+    if logConn:
+        logFunc = logger.info if dburl.timeout is not None else logger.debug
+        logFunc("Connecting to db {} on host {}".format(dburl.pgdb, dburl.pghost))
 
+    connection = None
     for i in range(retries):
         try:
-            cnx  = pgdb._connect_(cstr, dbhost, dbport, dbopt, dbtty, dbuser, dbpasswd)
+            connection = pgdb.connect(**conninfo)
             break
 
-        except pgdb.InternalError, e:
+        except pgdb.OperationalError, e:
             if 'timeout expired' in str(e):
-                logger.warning('Timeout expired connecting to %s, attempt %d/%d' % (dbbase, i+1, retries))
+                logger.warning('Timeout expired connecting to %s, attempt %d/%d' % (dburl.pgdb, i+1, retries))
                 continue
             raise
 
-    if cnx is None:
-        raise ConnectionError('Failed to connect to %s' % dbbase)
-
-    conn = pgdb.pgdbCnx(cnx)
+    if connection is None:
+        raise ConnectionError('Failed to connect to %s' % dburl.pgdb)
 
     #by default, libpq will print WARNINGS to stdout
     if not verbose:
-        cursor=conn.cursor()
+        cursor=connection.cursor()
         cursor.execute("SET CLIENT_MIN_MESSAGES='ERROR'")
-        conn.commit()
+        connection.commit()
         cursor.close()
 
     # set client encoding if needed
     if encoding:
-        cursor=conn.cursor()
+        cursor=connection.cursor()
         cursor.execute("SET CLIENT_ENCODING='%s'" % encoding)
-        conn.commit()
+        connection.commit()
         cursor.close()
 
-    def __enter__(self):
-        return self
-    def __exit__(self, type, value, traceback):
-        self.close()
-    conn.__class__.__enter__, conn.__class__.__exit__ = __enter__, __exit__
-    return conn
-
+    return ClosingConnection(connection)
 
 def execSQL(conn,sql):
     """
