@@ -15,6 +15,7 @@ for executing this set of commands.
 
 
 """
+from __future__ import absolute_import
 
 from Queue import Queue, Empty
 from threading import Thread
