@@ -8,7 +8,7 @@ import tempfile
 from StringIO import StringIO
 
 import errno
-from pygresql.pg import DatabaseError
+from pg import DatabaseError
 
 from gparray import Segment, GpArray, SegmentPair
 import shutil

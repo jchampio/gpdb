@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import pygresql.pg
+import pg
 import os
 import subprocess
 import re
@@ -144,11 +144,11 @@ class SQLIsolationExecutor(object):
             while retry:
                 try:
                     if (given_port is None):
-                        con = pygresql.pg.connect(host= given_host,
+                        con = pg.connect(host= given_host,
                                           opt= given_opt,
                                           dbname= given_dbname)
                     else:
-                        con = pygresql.pg.connect(host= given_host,
+                        con = pg.connect(host= given_host,
                                                   port= given_port,
                                                   opt= given_opt,
                                                   dbname= given_dbname)
@@ -266,7 +266,7 @@ class SQLIsolationExecutor(object):
         if not dbname:
             dbname = self.dbname
 
-        con = pygresql.pg.connect(dbname=dbname)
+        con = pg.connect(dbname=dbname)
         result = con.query("SELECT content FROM gp_segment_configuration WHERE role = 'p'").getresult()
         if len(result) == 0:
             raise Exception("Invalid gp_segment_configuration contents")
