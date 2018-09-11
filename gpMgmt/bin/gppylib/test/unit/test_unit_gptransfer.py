@@ -48,7 +48,7 @@ class GpTransfer(GpTestCase):
         # (which is fine so far), but to fully support specs
         # we need to go through and mock all the SQL calls
         # self.db_connection = MagicMock(spec=["__exit__", "close", "__enter__", "commit", "rollback"])
-        self.cursor = MagicMock(spec=pgdb.pgdbCursor)
+        self.cursor = MagicMock(spec=pgdb.Cursor)
 
         self.db_singleton = Mock()
         self.workerpool = MagicMock()

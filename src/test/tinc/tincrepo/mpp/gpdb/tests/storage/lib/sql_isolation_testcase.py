@@ -16,7 +16,7 @@ limitations under the License.
 """
 
 from mpp.models import SQLTestCase
-import pygresql.pg
+import pg
 from tinctest.lib import Gpdiff
 import os
 import subprocess
@@ -117,12 +117,12 @@ class SQLIsolationExecutor(object):
             self.dbname = dbname
             if self.utility_mode:
                 (hostname, port) = self.get_utility_mode_port(name)
-                self.con = pygresql.pg.connect(host=hostname, 
+                self.con = pg.connect(host=hostname,
                     port=port, 
                     opt="-c gp_session_role=utility",
                     dbname=self.dbname)
             else:
-                self.con = pygresql.pg.connect(dbname=self.dbname)
+                self.con = pg.connect(dbname=self.dbname)
             self.filename = "%s.%s" % (output_file, os.getpid())
 
         def get_utility_mode_port(self, name):
@@ -130,7 +130,7 @@ class SQLIsolationExecutor(object):
                 Gets the port number/hostname combination of the
                 dbid with the id = name
             """
-            con = pygresql.pg.connect(port = int(os.environ.get("PGPORT", 5432)))
+            con = pg.connect(port = int(os.environ.get("PGPORT", 5432)))
             r = con.query("SELECT hostname, port FROM gp_segment_configuration WHERE dbid = %s" % name).getresult()
             if len(r) == 0:
                 raise Exception("Invalid dbid %s" % name)

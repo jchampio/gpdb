@@ -32,7 +32,7 @@ core: pygresql subprocess32
 	python gpconfig_modules/parse_guc_metadata.py $(prefix)
 
 ifneq "$(wildcard $(CURDIR)/pythonSrc/ext/*.tar.gz)" ""
-install: core lockfile paramiko ecdsa pycrypto stream psutil
+install: core lockfile pygresql paramiko ecdsa pycrypto stream psutil
 else
 install: core stream
 endif
@@ -53,32 +53,13 @@ stream:
 #
 # PyGreSQL
 #
-PYGRESQL_VERSION=4.0
+PYGRESQL_VERSION=5.0.6
 PYGRESQL_DIR=PyGreSQL-$(PYGRESQL_VERSION)
-
 pygresql:
 	@echo "--- PyGreSQL"
-	. $(prefix)/greenplum_path.sh && unset PYTHONHOME && \
-	if [ `uname -s` = 'HP-UX' ]; then \
-	    cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && DESTDIR="$(DESTDIR)" CC="$(CC)" LDFLAGS="-L../../../../gpAux/ext/hpux_ia64/python-2.5.6/lib" python setup.py build; \
-	elif [ "$(BLD_ARCH)" = 'aix7_ppc_64' ]; then \
-	    unset PYTHONPATH && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && DESTDIR="$(DESTDIR)" CC="$(CC)" python_64 setup.py build; \
-	elif [ `uname -s` = 'OpenBSD' ]; then \
-	    cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && DESTDIR="$(DESTDIR)" CC=cc python setup.py build; \
-	else \
-	    cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && DESTDIR="$(DESTDIR)" CC="$(CC)" python setup.py build; \
-	fi
-	mkdir -p $(PYLIB_DIR)/pygresql
-	if [ `uname -s` = 'Darwin' ]; then \
-	  cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.macosx*/* $(PYLIB_DIR)/pygresql; \
-	elif [ `uname -s` = 'AIX' ]; then \
-	  cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.aix*/* $(PYLIB_DIR)/pygresql; \
-	elif [ `uname -s` = 'OpenBSD' ]; then \
-	  cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.openbsd*/* $(PYLIB_DIR)/pygresql; \
-	else \
-	  cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.linux*/* $(PYLIB_DIR)/pygresql; \
-	fi
-	touch $(PYLIB_DIR)/__init__.py
+	cd $(PYLIB_SRC_EXT)/ && $(TAR) xzf $(PYGRESQL_DIR).tar.gz
+	cd $(PYLIB_SRC_EXT)/$(PYGRESQL_DIR)/ && python setup.py build
+	cp -r $(PYLIB_SRC_EXT)/$(PYGRESQL_DIR)/build/lib*/* $(PYLIB_DIR)/
 
 #
 # PARAMIKO
