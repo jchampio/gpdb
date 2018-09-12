@@ -571,8 +571,11 @@ define tmpLOADERS_FILESET_BIN
 endef
 LOADERS_FILESET_BIN = $(strip $(tmpLOADERS_FILESET_BIN))
 
+# pg.py, pgdb.py, _pg.so are from pygresql which does not install into a single module
 define tmpLOADERS_FILESET_BINEXT
-	pygresql
+	pg.py
+	pgdb.py
+	_pg.so
 	yaml
 endef
 LOADERS_FILESET_BINEXT = $(strip $(tmpLOADERS_FILESET_BINEXT))
