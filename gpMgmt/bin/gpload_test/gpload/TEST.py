@@ -11,7 +11,7 @@ import fileinput
 import platform
 import re
 import subprocess
-from pygresql import pg
+import pg
 
 """
 Global Values

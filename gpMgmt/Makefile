@@ -94,9 +94,6 @@ install: generate_greenplum_path_file
 	if [ -e bin/ext/psutil ]; then \
 	    cp -rp bin/ext/psutil $(DESTDIR)$(prefix)/lib/python ; \
 	fi
-	if [ -e bin/ext/pygresql ]; then \
-	    cp -rp bin/ext/pygresql $(DESTDIR)$(prefix)/lib/python ; \
-	fi
 	if [ -e bin/ext/yaml ]; then \
 	    cp -rp bin/ext/yaml $(DESTDIR)$(prefix)/lib/python ; \
 	fi

@@ -35,7 +35,7 @@ except ImportError:
 
 import platform
 try:
-    from pygresql import pg
+    import pg
 except Exception, e:
     from struct import calcsize
     sysWordSize = calcsize("P") * 8

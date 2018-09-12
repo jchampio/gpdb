@@ -10,7 +10,7 @@ import fileinput
 import platform
 import re
 import subprocess
-from pygresql import pg
+import pg
 
 def get_port_from_conf():
     file = os.environ.get('MASTER_DATA_DIRECTORY')+'/postgresql.conf'
