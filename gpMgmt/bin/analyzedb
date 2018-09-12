@@ -25,13 +25,14 @@ import pipes  # for shell-quoting, pipes.quote()
 import fcntl
 
 try:
+    import pg
+
     from gppylib import gplog, pgconf, userinput
     from gppylib.commands.base import Command, WorkerPool, Worker
     from gppylib.operations import Operation
     from gppylib.gpversion import GpVersion
     from gppylib.db import dbconn
     from gppylib.operations.unix import CheckDir, CheckFile, MakeDir
-    from pygresql import pg
 
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))

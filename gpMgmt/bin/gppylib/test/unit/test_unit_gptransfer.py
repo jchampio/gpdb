@@ -9,7 +9,7 @@ from mock import *
 from gp_unittest import *
 from gppylib.gparray import Segment, GpArray
 from gppylib.db.dbconn import UnexpectedRowsError
-from pygresql import pgdb
+import pgdb
 
 cursor_keys = dict(
     normal_tables=re.compile(".*n\.nspname, c\.relname, c\.relstorage.*c\.oid NOT IN \( SELECT parchildrelid.*"),

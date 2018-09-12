@@ -4,11 +4,11 @@ import time
 from gppylib.operations.segment_reconfigurer import SegmentReconfigurer, FTS_PROBE_QUERY
 
 from gppylib.test.unit.gp_unittest import GpTestCase
-from pygresql import pgdb
+import pg
+import pgdb
 import mock
 from mock import Mock, patch, call, MagicMock
 import contextlib
-import pg
 
 
 class MyDbUrl:
