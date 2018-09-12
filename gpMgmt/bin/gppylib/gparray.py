@@ -1012,42 +1012,41 @@ class GpArray:
         """
 
         hasMirrors = False
-        conn = dbconn.connect(dbURL, utility)
+        with dbconn.connect(dbURL, utility) as conn:
+            # Get the version from the database:
+            version_str = None
+            for row in dbconn.execSQL(conn, "SELECT version()"):
+                version_str = row[0]
+            version = GpVersion(version_str)
 
-        # Get the version from the database:
-        version_str = None
-        for row in dbconn.execSQL(conn, "SELECT version()"):
-            version_str = row[0]
-        version = GpVersion(version_str)
+            config_rows = dbconn.execSQL(conn, '''
+            SELECT dbid, content, role, preferred_role, mode, status,
+            hostname, address, port, datadir
+            FROM pg_catalog.gp_segment_configuration
+            ORDER BY content, preferred_role DESC
+            ''')
 
-        config_rows = dbconn.execSQL(conn, '''
-        SELECT dbid, content, role, preferred_role, mode, status,
-        hostname, address, port, datadir
-        FROM pg_catalog.gp_segment_configuration
-        ORDER BY content, preferred_role DESC
-        ''')
+            recoveredSegmentDbids = []
+            segments = []
+            seg = None
+            for row in config_rows:
 
-        recoveredSegmentDbids = []
-        segments = []
-        seg = None
-        for row in config_rows:
+                # Extract fields from the row
+                (dbid, content, role, preferred_role, mode, status, hostname,
+                 address, port, datadir) = row
 
-            # Extract fields from the row
-            (dbid, content, role, preferred_role, mode, status, hostname,
-             address, port, datadir) = row
+                # Check if segment mirrors exist
+                if preferred_role == ROLE_MIRROR and content != -1:
+                    hasMirrors = True
 
-            # Check if segment mirrors exist
-            if preferred_role == ROLE_MIRROR and content != -1:
-                hasMirrors = True
+                # If we have segments which have recovered, record them.
+                if preferred_role != role and content >= 0:
+                    if mode == MODE_SYNCHRONIZED and status == STATUS_UP:
+                        recoveredSegmentDbids.append(dbid)
 
-            # If we have segments which have recovered, record them.
-            if preferred_role != role and content >= 0:
-                if mode == MODE_SYNCHRONIZED and status == STATUS_UP:
-                    recoveredSegmentDbids.append(dbid)
-
-            seg = Segment(content, preferred_role, dbid, role, mode, status,
-                              hostname, address, port, datadir)
-            segments.append(seg)
+                seg = Segment(content, preferred_role, dbid, role, mode, status,
+                                  hostname, address, port, datadir)
+                segments.append(seg)
 
         origSegments = [seg.copy() for seg in segments]
 
