@@ -49,8 +49,7 @@ try:
     from gppylib.gparray import GpArray
     from gppylib.userinput import ask_yesno
     from gppylib.utils import escapeDoubleQuoteInSQLString
-    from pygresql.pg import DB
-    from pygresql import pg
+    import pg
 except ImportError, import_exception:
     sys.exit('Cannot import modules.  Please check that you have sourced'
              ' greenplum_path.sh.  Detail: %s' % str(import_exception))
@@ -926,12 +925,12 @@ class TableValidator(object):
         while True:
             if not source_thread.isAlive():
                 if self._src_failed == True:
-                    DB(self._dest_conn).cancel()
+                    pg.DB(self._dest_conn).cancel()
                     break
 
             if not dest_thread.isAlive():
                 if self._dest_failed == True:
-                    DB(self._src_conn).cancel()
+                    pg.DB(self._src_conn).cancel()
                     break
 
             if not dest_thread.isAlive() and not source_thread.isAlive():
@@ -939,11 +938,11 @@ class TableValidator(object):
 
             if canceled == True:
                 try:
-                    DB(self._src_conn).cancel()
+                    pg.DB(self._src_conn).cancel()
                 except:
                     pass
                 try:
-                    DB(self._dest_conn).cancel()
+                    pg.DB(self._dest_conn).cancel()
                 except:
                     pass
                 break
@@ -1126,8 +1125,8 @@ class MD5MergeTableValidator(HashMergeTableValidator):
         self._dest_pipe = os.path.join(
             work_dir, str(table_pair.source), 'dest_md5_validation')
 
-        self._src_host = DB(src_conn).host
-        self._dest_host = DB(dest_conn).host
+        self._src_host = pg.DB(src_conn).host
+        self._dest_host = pg.DB(dest_conn).host
 
         src_pipe_cmd = GpCreateNamedPipe('Create source validation pipe',
                                          self._src_pipe,
@@ -1222,8 +1221,8 @@ FROM %s.%s t ORDER BY hash) TO '%s'"""
         self._dest_pipe = os.path.join(
             work_dir, str(table_pair.source), 'dest_sha256_validation')
 
-        self._src_host = DB(src_conn).host
-        self._dest_host = DB(dest_conn).host
+        self._src_host = pg.DB(src_conn).host
+        self._dest_host = pg.DB(dest_conn).host
 
         src_pipe_cmd = GpCreateNamedPipe('Create source validation pipe',
                                          self._src_pipe,
@@ -2301,7 +2300,7 @@ FROM (
             time.sleep(1)
             if not source_thread.isAlive():
                 if self._src_failed == True:
-                    DB(self._dest_conn).cancel()
+                    pg.DB(self._dest_conn).cancel()
                 else:
                     # Make sure all named pipes get an EOF on them or empty tables
                     # will hang.
@@ -2322,12 +2321,12 @@ FROM (
 
             if not dest_thread.isAlive():
                 if self._dest_failed == True:
-                    DB(self._src_conn).cancel()
+                    pg.DB(self._src_conn).cancel()
 
             if canceled == True:
                 try:
                     logger.info('Canceling source query...')
-                    DB(self._src_conn).cancel()
+                    pg.DB(self._src_conn).cancel()
                     source_thread.join()
                 except Exception, ex:
                     logger.info(
@@ -2335,7 +2334,7 @@ FROM (
 
                 try:
                     logger.info('Canceling destination query...')
-                    DB(self._dest_conn).cancel()
+                    pg.DB(self._dest_conn).cancel()
                     dest_thread.join()
                 except Exception, ex:
                     logger.info(

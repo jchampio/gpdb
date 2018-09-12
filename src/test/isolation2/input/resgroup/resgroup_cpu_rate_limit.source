@@ -21,7 +21,7 @@ CREATE TABLE cpu_usage_samples (sample text);
 -- and dump them into text in json format then save them in db for
 -- further analysis.
 CREATE OR REPLACE FUNCTION fetch_sample() RETURNS text AS $$
-import pygresql.pg as pg
+import pg
 import json
 
 conn = pg.connect(dbname="isolation2resgrouptest")
@@ -38,7 +38,7 @@ $$ LANGUAGE plpythonu;
 -- return true if the practical value is close to the expected value.
 CREATE OR REPLACE FUNCTION verify_cpu_usage(groupname TEXT, expect_cpu_usage INT, err_rate INT)
 RETURNS BOOL AS $$
-import pygresql.pg as pg
+import pg
 import json
 
 conn = pg.connect(dbname="isolation2resgrouptest")
