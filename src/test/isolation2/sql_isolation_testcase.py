@@ -178,22 +178,55 @@ class SQLIsolationExecutor(object):
 
         def printout_result(self, r):
             """
-                This is a pretty dirty, but apprently the only way
-                to get the pretty output of the query result.
-                The reason is that for some python internal reason  
-                print(r) calls the correct function while neighter str(r)
-                nor repr(r) output something useful. 
-
-                FIXME: once we upgrade to a modern pygresql this can probably go
-                away entirely; it looks like 5.0 may have consolidated the
-                internal print/str code.
+            The "pretty print" format for a PyGreSQL Query object changed
+            between PyGreSQL 4 and 5. Rather than couple our result files to
+            this (undocumented) output format, create our own (based on the
+            PyGreSQL 4 format) so that we are stable across versions.
             """
-            with tempfile.TemporaryFile() as f:
-                print >>f, r
+            columns = r.listfields()
+            if not columns:
+                return ""
 
-                f.seek(0) # rewind
-                ppr = f.read()
-                return ppr.strip() + "\n"
+            # Find the longest value in each column for horizontal alignment.
+            column_lengths = [len(name) for name in columns]
+            rows = r.getresult()
+
+            for row in rows:
+                for idx, length in enumerate(column_lengths):
+                    value = str(row[idx])
+                    if len(value) > length:
+                        column_lengths[idx] = len(value)
+
+            # Print our header.
+            output = []
+            for idx, name in enumerate(columns):
+                if idx > 0:
+                    output.append('|')
+                output.append(name.ljust(column_lengths[idx]))
+            output.append('\n')
+
+            for idx, name in enumerate(columns):
+                if idx > 0:
+                    output.append('+')
+                output.append('-' * column_lengths[idx])
+            output.append('\n')
+
+            for row in rows:
+                for idx, element in enumerate(row):
+                    if idx > 0:
+                        output.append('|')
+
+                    if isinstance(element, float):
+                        value = format(element, "g")
+                    else:
+                        value = str(element)
+                    output.append(value.ljust(column_lengths[idx]))
+                output.append('\n')
+
+            output.append("({} row{})\n\n".format(len(rows),
+                                                  "" if len(rows) == 1 else "s"))
+
+            return "".join(output)
 
         def execute_command(self, command):
             """
@@ -203,7 +236,7 @@ class SQLIsolationExecutor(object):
                 r = self.con.query(command)
                 if r and type(r) == str:
                     echo_content = command[:-1].partition(" ")[0].upper()
-                    return "%s %s" % (echo_content, self.printout_result(r))
+                    return "%s %s" % (echo_content, r)
                 elif r:
                     return self.printout_result(r)
                 else:
