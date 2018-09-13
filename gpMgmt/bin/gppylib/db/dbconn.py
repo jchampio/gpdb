@@ -5,6 +5,7 @@
 """
 TODO: module docs
 """
+import collections
 import os
 import stat
 import sys
@@ -151,7 +152,13 @@ class DbURL:
 
 class ClosingConnection(pgdb.Connection):
     def __init__(self, connection):
+        self._notices = collections.deque(maxlen=100)
+
+        def handle_notice(notice):
+            self._notices.append(notice)
+
         self._impl = connection
+        self._impl.set_notice_receiver(handle_notice)
 
     def __enter__(self):
         return self._impl.__enter__()
@@ -163,6 +170,11 @@ class ClosingConnection(pgdb.Connection):
 
     def __getattr__(self, name):
         return getattr(self._impl, name)
+
+    def notices(self):
+        notice_list = list(self._notices)
+        self._notices.clear()
+        return notice_list
 
 def connect(dburl, utility=False, verbose=False,
             encoding=None, allowSystemTableMods=False, logConn=True):

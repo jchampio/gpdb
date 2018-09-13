@@ -52,6 +52,7 @@ import hashlib
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import uuid
 import socket
+from gppylib.db import dbconn
 
 thePlatform = platform.system()
 if thePlatform in ['Windows', 'Microsoft']:
@@ -1809,12 +1810,12 @@ class gpload:
                      " host=" + str(self.options.h) +
                      " port=" + str(self.options.p) +
                      " database=" + str(self.options.d))
-            self.db = pg.DB( dbname=self.options.d
-                           , host=self.options.h
-                           , port=self.options.p
-                           , user=self.options.U
-                           , passwd=self.options.password
-                           )
+            self._conn = dbconn.connect(dbname=self.options.d,
+                                        host=self.options.h,
+                                        port=self.options.p,
+                                        user=self.options.U,
+                                        passwd=self.options.password)
+            self.db = pg.DB(self._conn)
             self.log(self.DEBUG, "Successfully connected to database")
         except Exception, e:
             errorMessage = str(e)
