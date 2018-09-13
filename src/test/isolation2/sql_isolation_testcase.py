@@ -256,6 +256,65 @@ class SQLIsolationExecutor(object):
 
             return result
 
+        def _printout_result_FIXME__(self, r):
+            """
+            FIXME: This was the function we were going with to decouple PyGreSQL
+            and isolation2, but then Heikki's commit 7d7782f1 coincidentally did
+            much the same thing for a different reason. Port any improvements we
+            have here (such as enumerate() and the use of a joined result array
+            instead of a reallocated string) up to the function above, then get
+            rid of this one.
+
+            The "pretty print" format for a PyGreSQL Query object changed
+            between PyGreSQL 4 and 5. Rather than couple our result files to
+            this (undocumented) output format, create our own (based on the
+            PyGreSQL 4 format) so that we are stable across versions.
+            """
+            columns = r.listfields()
+            if not columns:
+                return ""
+
+            # Find the longest value in each column for horizontal alignment.
+            column_lengths = [len(name) for name in columns]
+            rows = r.getresult()
+
+            for row in rows:
+                for idx, length in enumerate(column_lengths):
+                    value = str(row[idx])
+                    if len(value) > length:
+                        column_lengths[idx] = len(value)
+
+            # Print our header.
+            output = []
+            for idx, name in enumerate(columns):
+                if idx > 0:
+                    output.append('|')
+                output.append(name.ljust(column_lengths[idx]))
+            output.append('\n')
+
+            for idx, name in enumerate(columns):
+                if idx > 0:
+                    output.append('+')
+                output.append('-' * column_lengths[idx])
+            output.append('\n')
+
+            for row in rows:
+                for idx, element in enumerate(row):
+                    if idx > 0:
+                        output.append('|')
+
+                    if isinstance(element, float):
+                        value = format(element, "g")
+                    else:
+                        value = str(element)
+                    output.append(value.ljust(column_lengths[idx]))
+                output.append('\n')
+
+            output.append("({} row{})\n\n".format(len(rows),
+                                                  "" if len(rows) == 1 else "s"))
+
+            return "".join(output)
+
         def execute_command(self, command):
             """
                 Executes a given command
