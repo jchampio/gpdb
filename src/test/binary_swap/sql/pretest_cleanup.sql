@@ -18,6 +18,8 @@ DROP VIEW IF EXISTS distinct_windowagg_view;
 DROP TABLE IF EXISTS public.toast_chunk_test;
 -- end_ignore
 
+\connect isolation2test
+
 -- start_ignore
 -- These tables contain GPDB4-format AOCS tables. Early versions of the 5.x
 -- server fail to read this format correctly.
