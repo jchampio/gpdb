@@ -150,15 +150,16 @@ class DbURL:
         return "%s:%d:%s:%s:%s" % \
             (canonicalize(self.pghost),self.pgport,self.pgdb,self.pguser,self.pgpass)
 
+# FIXME: we shouldn't subclass here because of the __getattr__ forwarding
 class ClosingConnection(pgdb.Connection):
     def __init__(self, connection):
         self._notices = collections.deque(maxlen=100)
 
         def handle_notice(notice):
-            self._notices.append(notice)
+            self._notices.append(notice.message)
 
         self._impl = connection
-        self._impl.set_notice_receiver(handle_notice)
+        self._impl._cnx.set_notice_receiver(handle_notice)
 
     def __enter__(self):
         return self._impl.__enter__()
