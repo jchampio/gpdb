@@ -17,3 +17,10 @@ DROP VIEW IF EXISTS distinct_windowagg_view;
 -- correctly.
 DROP TABLE IF EXISTS public.toast_chunk_test;
 -- end_ignore
+
+-- start_ignore
+-- These tables contain GPDB4-format AOCS tables. Early versions of the 5.x
+-- server fail to read this format correctly.
+DROP TABLE IF EXISTS public.aocs_upgrade_test;
+DROP TABLE IF EXISTS public.aocs_rle_upgrade_test;
+-- end_ignore
