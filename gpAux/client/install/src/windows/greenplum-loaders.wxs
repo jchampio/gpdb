@@ -1138,16 +1138,13 @@ If you want to review or change any of your installation settings, click Back. C
                 <RemoveFile Id="gpload.pyc" On="uninstall" Name="gpload.pyc" />
               </Component>
               <Directory Id="BINlib" Name="lib">
-                  <Directory Id="LIBpygresql" Name="pygresql">
-                    <Component Id="pygresql" DiskId="1" Guid="998400F4-FA4B-4044-B0CA-41ABFD15A9E6">
-                      <File Id="pygresql__init__.py" Name="__init__.py" Source="$(var.SRCDIR)\bin\ext\pygresql\__init__.py" />
-                      <File Id="pg.py" Name="pg.py" Source="$(var.SRCDIR)\bin\ext\pygresql\pg.py" />
-                      <File Id="pgdb.py" Name="pgdb.py" Source="$(var.SRCDIR)\bin\ext\pygresql\pgdb.py" />
-                      <File Id="_pg.pyd" Name="_pg.pyd" Source="$(var.SRCDIR)\bin\ext\pygresql\_pg.pyd" />
-                      <File Id="libpq.dll" Name="libpq.dll" Source="$(var.SRCDIR)\lib\libpq.dll" />
-                      <RemoveFile Id="compiled_pygresql" On="uninstall" Name="*.pyc" />
-                    </Component>
-                  </Directory>
+                  <Component Id="BINlib" DiskId="1" Guid="F79AE93F-9754-4A3A-B4CA-8A1876D9C8D5">
+                    <File Id="pg.py" Name="pg.py" Source="$(var.SRCDIR)\bin\ext\pg.py" />
+                    <File Id="pgdb.py" Name="pgdb.py" Source="$(var.SRCDIR)\bin\ext\pgdb.py" />
+                    <File Id="_pg.pyd" Name="_pg.pyd" Source="$(var.SRCDIR)\bin\ext\_pg.pyd" />
+                    <File Id="libpq.dll" Name="libpq.dll" Source="$(var.SRCDIR)\lib\libpq.dll" />
+                    <RemoveFile Id="compiled_pygresql" On="uninstall" Name="*.pyc" />
+                  </Component>
                   <Directory Id="LIByaml" Name="yaml">
                     <Component Id="yaml" DiskId="1" Guid="E7A7BA21-6DA8-491e-9ABA-C5105C4029C2">
                       <File Id="__init__.py" Name="__init__.py" Source="$(var.SRCDIR)\bin\ext\yaml\__init__.py" />
