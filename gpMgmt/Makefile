@@ -65,12 +65,12 @@ install: generate_greenplum_path_file
 
 	# Copy the management utilities
 	mkdir -p $(DESTDIR)$(prefix)/bin
+	mkdir -p $(DESTDIR)$(prefix)/bin/gppylib
 	mkdir -p $(DESTDIR)$(prefix)/lib
 	mkdir -p $(DESTDIR)$(prefix)/lib/python
 	mkdir -p $(DESTDIR)$(prefix)/sbin
 
 	# Setup /lib/python contents
-	cp -rp bin/gppylib $(DESTDIR)$(prefix)/lib/python
 	if [ -e bin/ext/Crypto ]; then \
 	    cp -rp bin/ext/Crypto $(DESTDIR)$(prefix)/lib/python ; \
 	fi
@@ -131,9 +131,8 @@ install: generate_greenplum_path_file
 	rm -rf $(DESTDIR)$(prefix)/bin/pythonSrc
 	rm -rf $(DESTDIR)$(prefix)/bin/Makefile
 	rm -rf $(DESTDIR)$(prefix)/bin/src
-	rm -rf $(DESTDIR)$(prefix)/bin/gppylib
 	rm -rf $(DESTDIR)$(prefix)/bin/gpload_test
-	find $(DESTDIR)$(prefix)/lib/python/gppylib -name test -type d | xargs rm -rf
+	find $(DESTDIR)$(prefix)/bin/gppylib -name test -type d | xargs rm -rf
 
 clean distclean:
 	$(MAKE) -C bin $@
