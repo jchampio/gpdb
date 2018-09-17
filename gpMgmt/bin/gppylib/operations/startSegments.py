@@ -212,10 +212,13 @@ class StartSegmentsOperation:
     def __processStartOrConvertCommands(self, resultOut):
         logger.info("Process results...")
         for cmd in self.__workerPool.getCompletedItems():
+            remaining_segments = list(cmd.dblist)
+
             if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:
             # error code 0 mean all good, 1 means it ran but at least one thing failed
                 cmdout = cmd.get_results().stdout
                 lines=cmdout.split('\n')
+
                 for line in lines:
                     if line.startswith("STATUS"):
                         fields=line.split('--')
@@ -249,9 +252,10 @@ class StartSegmentsOperation:
                                     resultOut.addSuccess(segment)
                                 else:
                                     resultOut.addFailure(segment, reasonStr, reasonCode)
-            else:
-                for segment in cmd.dblist:
-                    resultOut.addFailure(segment, cmd.get_results(), gp.SEGSTART_ERROR_UNKNOWN_ERROR)
+                                remaining_segments.remove(segment)
+
+            for segment in remaining_segments:
+                resultOut.addFailure(segment, cmd.get_results(), gp.SEGSTART_ERROR_UNKNOWN_ERROR)
 
     def __createPickledTransitionParameters(self, segmentsOnHost, targetModePerSegment, convertUsingFullResync, dbIdToPeerMap):
         dbIdToFullResync = {}
