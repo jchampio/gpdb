@@ -211,6 +211,13 @@ diff_and_exit() {
 	echo done
 
 	gpstop -a ${args}
+
+	# XXX Try to debug some transient failures in gpstop. There are open
+	# connections lingering for some reason.
+	if (( $? )); then
+		PGOPTIONS="${pgopts}" "${NEW_BINDIR}"/psql -c 'SELECT * FROM pg_stat_activity;' template1
+	fi
+
 	export PGPORT=15432
 	export MASTER_DATA_DIRECTORY="${OLD_DATADIR}/qddir/demoDataDir-1"
 
