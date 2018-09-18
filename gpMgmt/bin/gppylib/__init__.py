@@ -13,3 +13,13 @@ __path__[0] = _abspath(__path__[0])
 import os as _os
 import os.path as _path
 _os.environ['GPHOME'] = _path.dirname(_path.dirname(_path.dirname(_abspath(__file__))))
+
+# Set PYTHONPATH to include the installation bin/ directory. Several scripts
+# just assume that gppylib is globally available.
+#
+# TODO: get rid of this hack as well, and make scripts think about where their
+# custom dependencies are.
+if _os.getenv('PYTHONPATH'):
+    _os.environ['PYTHONPATH'] = _os.getenv('PYTHONPATH') + _path.pathsep + _path.dirname(_path.dirname(_abspath(__file__)))
+else:
+    _os.environ['PYTHONPATH'] = _path.dirname(_path.dirname(_abspath(__file__)))
