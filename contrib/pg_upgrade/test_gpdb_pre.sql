@@ -124,10 +124,9 @@ DROP PROTOCOL IF EXISTS demoprot_untrusted;
 -- h1 seems to switch AO storage options after upgrade.
 DROP TABLE IF EXISTS public.h1 CASCADE;
 
-\c dsp2;
-
 \c dsp3;
 
--- toast table and index aren't correctly migrated for this relation, for some
+-- toast table and index aren't correctly migrated for these relations, for some
 -- reason
 DROP TABLE IF EXISTS public.alter_table_reorg_heap CASCADE;
+DROP TABLE IF EXISTS public.alter_table_reorg_aoco CASCADE;
