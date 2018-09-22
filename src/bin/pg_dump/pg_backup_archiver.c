@@ -847,7 +847,27 @@ ArchiveEntry(Archive *AHX,
 	newToc->owner = owner ? pg_strdup(owner) : NULL;
 	newToc->withOids = withOids;
 	newToc->desc = pg_strdup(desc);
-	newToc->defn = pg_strdup(defn);
+
+	if (AH->public.preassigning_oids)
+	{
+		/*
+		 * GPDB: after executing the entry's SQL, check to make sure all OIDs
+		 * that were assigned by this entry are actually used.
+		 */
+		static char sql[] = "\n-- For binary upgrade, ensure all preassigned OIDs are actually used\n"
+							"SELECT binary_upgrade.check_preassigned_oids();\n";
+
+		newToc->defn = pg_malloc(strlen(defn) + sizeof(sql));
+		strcpy(newToc->defn, defn);
+		strcat(newToc->defn, sql);
+
+		AH->public.preassigning_oids = false;
+	}
+	else
+	{
+		newToc->defn = pg_strdup(defn);
+	}
+
 	newToc->dropStmt = dropStmt ? pg_strdup(dropStmt) : NULL;
 	newToc->copyStmt = copyStmt ? pg_strdup(copyStmt) : NULL;
 
@@ -2014,6 +2034,9 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	/* sql error handling */
 	AH->public.exit_on_error = true;
 	AH->public.n_errors = 0;
+
+	/* GPDB additions */
+	AH->public.preassigning_oids = false;
 
 	AH->archiveDumpVersion = PG_VERSION;
 

@@ -51,6 +51,8 @@ Datum		create_empty_extension(PG_FUNCTION_ARGS);
 
 Datum		set_next_pg_namespace_oid(PG_FUNCTION_ARGS);
 
+Datum		check_preassigned_oids(PG_FUNCTION_ARGS);
+
 PG_FUNCTION_INFO_V1(set_next_pg_type_oid);
 PG_FUNCTION_INFO_V1(set_next_array_pg_type_oid);
 PG_FUNCTION_INFO_V1(set_next_toast_pg_type_oid);
@@ -65,6 +67,8 @@ PG_FUNCTION_INFO_V1(set_next_pg_authid_oid);
 PG_FUNCTION_INFO_V1(create_empty_extension);
 
 PG_FUNCTION_INFO_V1(set_next_pg_namespace_oid);
+
+PG_FUNCTION_INFO_V1(check_preassigned_oids);
 
 Datum
 set_next_pg_type_oid(PG_FUNCTION_ARGS)
@@ -240,6 +244,17 @@ set_next_pg_namespace_oid(PG_FUNCTION_ARGS)
 	{
 		AddPreassignedOidFromBinaryUpgrade(nspid, NamespaceRelationId, nspname,
 										   InvalidOid, InvalidOid, InvalidOid);
+	}
+
+	PG_RETURN_VOID();
+}
+
+Datum
+check_preassigned_oids(PG_FUNCTION_ARGS)
+{
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		CheckPreassignedOidsFromBinaryUpgrade();
 	}
 
 	PG_RETURN_VOID();

@@ -31,7 +31,7 @@ extern Oid GetPreassignedOidForDatabase(const char *datname);
 
 /* Functions used in binary upgrade */
 extern bool IsOidAcceptable(Oid oid);
-
 extern void AtEOXact_DispatchOids(bool isCommit);
+extern void CheckPreassignedOidsFromBinaryUpgrade();
 
 #endif   /* OID_DISPATCH_H */

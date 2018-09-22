@@ -97,6 +97,12 @@ install_support_functions_in_new_db(const char *db_name)
 							  "RETURNS VOID "
 							  "AS '$libdir/pg_upgrade_support' "
 							  "LANGUAGE C STRICT;"));
+	PQclear(executeQueryOrDie(conn,
+							  "CREATE OR REPLACE FUNCTION "
+							  "binary_upgrade.check_preassigned_oids() "
+							  "RETURNS VOID "
+							  "AS '$libdir/pg_upgrade_support' "
+							  "LANGUAGE C STRICT;"));
 
 	PQfinish(conn);
 }
