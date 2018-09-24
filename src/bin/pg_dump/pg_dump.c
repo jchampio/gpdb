@@ -280,9 +280,23 @@ static void binary_upgrade_set_type_oids_by_type_oid(Archive *fout,
 								Oid pg_type_ns_oid, char *pg_type_name);
 static bool binary_upgrade_set_type_oids_by_rel_oid(Archive *fout,
 								 PQExpBuffer upgrade_buffer, Oid pg_rel_oid);
+static bool binary_upgrade_set_type_oids_for_ao(Archive *fout,
+								 PQExpBuffer upgrade_buffer, Oid pg_rel_oid,
+								 char *ao_aux_typname);
+static bool binary_upgrade_set_type_oids_by_rel_oid_impl(Archive *fout,
+								 PQExpBuffer upgrade_buffer, Oid pg_rel_oid,
+								 char *typname_override);
 static void binary_upgrade_set_pg_class_oids(Archive *fout,
 								 PQExpBuffer upgrade_buffer,
 								 Oid pg_class_oid, bool is_index);
+static void binary_upgrade_set_pg_class_oids_for_ao(Archive *fout,
+								 PQExpBuffer upgrade_buffer,
+								 Oid pg_class_oid, bool is_index,
+								 char *ao_aux_relname);
+static void binary_upgrade_set_pg_class_oids_impl(Archive *fout,
+								 PQExpBuffer upgrade_buffer,
+								 Oid pg_class_oid, bool is_index,
+								 char *relname_override);
 static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti, PQExpBuffer buffer);
 static char *get_synchronized_snapshot(Archive *fout);
@@ -3131,6 +3145,29 @@ binary_upgrade_set_type_oids_by_rel_oid(Archive *fout,
 										PQExpBuffer upgrade_buffer,
 										Oid pg_rel_oid)
 {
+	return binary_upgrade_set_type_oids_by_rel_oid_impl(fout, upgrade_buffer,
+														pg_rel_oid, NULL);
+}
+
+static bool
+binary_upgrade_set_type_oids_for_ao(Archive *fout,
+									PQExpBuffer upgrade_buffer,
+									Oid pg_rel_oid,
+									char *ao_aux_typname)
+{
+	if (!ao_aux_typname)
+		exit_horribly(NULL, "binary_upgrade_set_type_oids_for_ao() requires an AO auxiliary type name");
+
+	return binary_upgrade_set_type_oids_by_rel_oid_impl(fout, upgrade_buffer,
+														pg_rel_oid, ao_aux_typname);
+}
+
+static bool
+binary_upgrade_set_type_oids_by_rel_oid_impl(Archive *fout,
+											 PQExpBuffer upgrade_buffer,
+											 Oid pg_rel_oid,
+											 char *typname_override)
+{
 	PQExpBuffer upgrade_query = createPQExpBuffer();
 	PGresult   *upgrade_res;
 	Oid			pg_type_oid;
@@ -3155,7 +3192,14 @@ binary_upgrade_set_type_oids_by_rel_oid(Archive *fout,
 
 	pg_type_oid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "crel")));
 	pg_type_nsoid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typnamespace")));
-	pg_type_name = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typname"));
+	if (typname_override)
+	{
+		pg_type_name = typname_override;
+	}
+	else
+	{
+		pg_type_name = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typname"));
+	}
 
 	binary_upgrade_set_type_oids_by_type_oid(fout, upgrade_buffer,
 											 pg_type_oid, pg_type_nsoid, pg_type_name);
@@ -3193,15 +3237,53 @@ binary_upgrade_set_type_oids_by_rel_oid(Archive *fout,
 }
 
 static void
+create_ao_relname(char *dst, size_t len, const char *prefix, Oid auxoid)
+{
+	size_t actual = snprintf(dst, len, "%s_%u", prefix, auxoid);
+
+	if (actual >= len)
+		exit_horribly(NULL, "create_ao_relname: destination buffer is too short");
+}
+
+static void
+create_ao_idxname(char *dst, size_t len, const char *prefix, Oid auxoid)
+{
+	size_t actual = snprintf(dst, len, "%s_%u_index", prefix, auxoid);
+
+	if (actual >= len)
+		exit_horribly(NULL, "create_ao_idxname: destination buffer is too short");
+}
+
+/*
+ * GPDB: the implementation of this function has moved below, to
+ * binary_upgrade_set_pg_class_oids_impl(), so that we can handle some of the
+ * annoyances of append-only tables without having to modify upstream callers.
+ *
+ * When dumping an AO auxiliary table during binary upgrade, use
+ * binary_upgrade_set_pg_class_oids_for_ao() instead.
+ */
+static void
 binary_upgrade_set_pg_class_oids(Archive *fout,
 								 PQExpBuffer upgrade_buffer, Oid pg_class_oid,
 								 bool is_index)
+{
+	binary_upgrade_set_pg_class_oids_impl(fout, upgrade_buffer, pg_class_oid,
+										  is_index,
+										  /* this is not an AO table, use the old relname */
+										  NULL);
+}
+
+static void
+binary_upgrade_set_pg_class_oids_impl(Archive *fout,
+									  PQExpBuffer upgrade_buffer,
+									  Oid pg_class_oid,
+									  bool is_index,
+									  char *relname_override)
 {
 	PQExpBuffer upgrade_query = createPQExpBuffer();
 	PGresult   *upgrade_res;
 	Oid			pg_class_reltoastrelid;
 	Oid			pg_class_reltoastidxid;
-
 	Oid			pg_class_relnamespace;
 	char	   *pg_class_relname;
 	Oid			pg_class_reltoastnamespace;
@@ -3215,13 +3297,14 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 	Oid			ao_blkdiridxid = InvalidOid;
 	Oid			ao_visimaprelid = InvalidOid;
 	Oid			ao_visimapidxid = InvalidOid;
+	bool		ao_columnstore = false;
 
 	appendPQExpBuffer(upgrade_query,
 					  "SELECT c.reltoastrelid, t.relnamespace AS toast_relnamespace, t.relname AS toast_relname, "
 					  "       c.relnamespace, c.relname, "
 					  "       t.reltoastidxid, ti.relnamespace AS tidx_relnamespace, ti.relname AS tidx_relname, "
 					  "       bi.oid AS bmoid, bidx.oid AS bmidxoid, "
-					  "       pgao.segrelid, "
+					  "       pgao.segrelid, pgao.columnstore, "
 					  "       pgao.blkdirrelid, pgao.blkdiridxid, "
 					  "       pgao.visimaprelid, pgao.visimapidxid "
 					  "FROM pg_catalog.pg_class c LEFT JOIN "
@@ -3240,7 +3323,14 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 
 	/* Greenplum specific values */
 	pg_class_relnamespace = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "relnamespace")));
-	pg_class_relname = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "relname"));
+	if (relname_override)
+	{
+		pg_class_relname = relname_override;
+	}
+	else
+	{
+		pg_class_relname = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "relname"));
+	}
 	pg_class_reltoastnamespace = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "toast_relnamespace")));
 	pg_class_reltoastname = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "toast_relname"));
 	pg_class_reltidxnamespace = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "tidx_relnamespace")));
@@ -3251,6 +3341,7 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 	if (!PQgetisnull(upgrade_res, 0, PQfnumber(upgrade_res, "segrelid")))
 	{
 		ao_segrelid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "segrelid")));
+		ao_columnstore = (PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "columnstore"))[0] == 't');
 		ao_blkdirrelid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "blkdirrelid")));
 		ao_blkdiridxid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "blkdiridxid")));
 		ao_visimaprelid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "visimaprelid")));
@@ -3299,22 +3390,36 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 		/* Set up any AO auxiliary tables with preallocated OIDs as well. */
 		if (OidIsValid(ao_segrelid))
 		{
-			binary_upgrade_set_pg_class_oids(fout, upgrade_buffer, ao_segrelid, false);
-			binary_upgrade_set_type_oids_by_rel_oid(fout, upgrade_buffer, ao_segrelid);
+			/*
+			 * Adjust the names of all pg_aoseg aux tables to match what they
+			 * will be in the new cluster, using the OID of the owning table. In
+			 * many cases these will be the same as the ones in the old cluster,
+			 * but not always.
+			 */
+			char ao_relname[64];
+			const char *aoseg_prefix = ao_columnstore ? "pg_aocsseg" : "pg_aoseg";
+
+			create_ao_relname(ao_relname, sizeof(ao_relname), aoseg_prefix, pg_class_oid);
+			binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_segrelid, false, ao_relname);
+			binary_upgrade_set_type_oids_for_ao(fout, upgrade_buffer, ao_segrelid, ao_relname);
 
 			/* blkdir is optional. */
 			if (OidIsValid(ao_blkdirrelid))
 			{
-				binary_upgrade_set_pg_class_oids(fout, upgrade_buffer, ao_blkdirrelid, false);
-				binary_upgrade_set_type_oids_by_rel_oid(fout, upgrade_buffer, ao_blkdirrelid);
+				create_ao_relname(ao_relname, sizeof(ao_relname), "pg_aoblkdir", pg_class_oid);
+				binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_blkdirrelid, false, ao_relname);
+				binary_upgrade_set_type_oids_for_ao(fout, upgrade_buffer, ao_blkdirrelid, ao_relname);
 
-				binary_upgrade_set_pg_class_oids(fout, upgrade_buffer, ao_blkdiridxid, true);
+				create_ao_idxname(ao_relname, sizeof(ao_relname), "pg_aoblkdir", pg_class_oid);
+				binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_blkdiridxid, true, ao_relname);
 			}
 
-			binary_upgrade_set_pg_class_oids(fout, upgrade_buffer, ao_visimaprelid, false);
-			binary_upgrade_set_type_oids_by_rel_oid(fout, upgrade_buffer, ao_visimaprelid);
+			create_ao_relname(ao_relname, sizeof(ao_relname), "pg_aovisimap", pg_class_oid);
+			binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_visimaprelid, false, ao_relname);
+			binary_upgrade_set_type_oids_for_ao(fout, upgrade_buffer, ao_visimaprelid, ao_relname);
 
-			binary_upgrade_set_pg_class_oids(fout, upgrade_buffer, ao_visimapidxid, true);
+			create_ao_idxname(ao_relname, sizeof(ao_relname), "pg_aovisimap", pg_class_oid);
+			binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_visimapidxid, true, ao_relname);
 		}
 	}
 	else
@@ -3340,6 +3445,20 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 
 	PQclear(upgrade_res);
 	destroyPQExpBuffer(upgrade_query);
+}
+
+static void
+binary_upgrade_set_pg_class_oids_for_ao(Archive *fout,
+										PQExpBuffer upgrade_buffer,
+										Oid pg_class_oid,
+										bool is_index,
+										char *ao_aux_relname)
+{
+	if (!ao_aux_relname)
+		exit_horribly(NULL, "binary_upgrade_set_pg_class_oids_for_ao() requires an AO auxiliary relname");
+
+	binary_upgrade_set_pg_class_oids_impl(fout, upgrade_buffer, pg_class_oid,
+										  is_index, ao_aux_relname);
 }
 
 /*
