@@ -3404,6 +3404,10 @@ binary_upgrade_set_pg_class_oids_impl(Archive *fout,
 			binary_upgrade_set_type_oids_for_ao(fout, upgrade_buffer, ao_segrelid, ao_relname);
 
 			/* blkdir is optional. */
+			/* TODO: actually, it looks like blkdir might not be created until
+			 * the first scan that needs it, which won't happen during upgrades?
+			 * Is that acceptable? */
+#if 0
 			if (OidIsValid(ao_blkdirrelid))
 			{
 				create_ao_relname(ao_relname, sizeof(ao_relname), "pg_aoblkdir", pg_class_oid);
@@ -3413,6 +3417,7 @@ binary_upgrade_set_pg_class_oids_impl(Archive *fout,
 				create_ao_idxname(ao_relname, sizeof(ao_relname), "pg_aoblkdir", pg_class_oid);
 				binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_blkdiridxid, true, ao_relname);
 			}
+#endif
 
 			create_ao_relname(ao_relname, sizeof(ao_relname), "pg_aovisimap", pg_class_oid);
 			binary_upgrade_set_pg_class_oids_for_ao(fout, upgrade_buffer, ao_visimaprelid, false, ao_relname);
