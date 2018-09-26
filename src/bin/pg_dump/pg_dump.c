@@ -278,6 +278,10 @@ static void binary_upgrade_set_namespace_oid(Archive *fout,
 static void binary_upgrade_set_type_oids_by_type_oid(Archive *fout,
 								PQExpBuffer upgrade_buffer, Oid pg_type_oid,
 								Oid pg_type_ns_oid, char *pg_type_name);
+static void binary_upgrade_set_type_oids_by_type_oid_impl(Archive *fout,
+								PQExpBuffer upgrade_buffer, Oid pg_type_oid,
+								Oid pg_type_ns_oid, char *pg_type_name,
+								int dump_flags);
 static bool binary_upgrade_set_type_oids_by_rel_oid(Archive *fout,
 								 PQExpBuffer upgrade_buffer, Oid pg_rel_oid);
 static bool binary_upgrade_set_type_oids_for_ao(Archive *fout,
@@ -325,6 +329,11 @@ static bool isGPDB(Archive *fout);
 static bool isGPDB5000OrLater(Archive *fout);
 static bool isGPDB6000OrLater(Archive *fout);
 static void error_unsupported_server_version(Archive *fout) pg_attribute_noreturn();
+
+/* valid dump_flags for binary_upgrade_set_type_oids_by_rel_oid_impl() */
+#define TYPE_ASSIGN_BASE	(1 << 0)
+#define TYPE_ASSIGN_ARRAY	(1 << 1)
+#define TYPE_ASSIGN_BOTH	(TYPE_ASSIGN_BASE | TYPE_ASSIGN_ARRAY)
 
 /* END MPP ADDITION */
 
@@ -3093,51 +3102,76 @@ binary_upgrade_set_namespace_oid(Archive *fout, PQExpBuffer upgrade_buffer,
 static void
 binary_upgrade_set_type_oids_by_type_oid(Archive *fout,
 										 PQExpBuffer upgrade_buffer,
-										 Oid pg_type_oid, Oid pg_type_ns_oid,
+										 Oid pg_type_oid,
+										 Oid pg_type_ns_oid,
 										 char *pg_type_name)
 {
-	PQExpBuffer upgrade_query = createPQExpBuffer();
-	PGresult   *upgrade_res;
-	Oid			pg_type_array_oid;
-	Oid			pg_type_array_nsoid;
-	char	   *pg_type_array_name;
+	binary_upgrade_set_type_oids_by_type_oid_impl(fout, upgrade_buffer,
+												  pg_type_oid, pg_type_ns_oid,
+												  pg_type_name,
+												  TYPE_ASSIGN_BOTH);
+}
 
+static void
+binary_upgrade_set_type_oids_by_type_oid_impl(Archive *fout,
+											  PQExpBuffer upgrade_buffer,
+											  Oid pg_type_oid,
+											  Oid pg_type_ns_oid,
+											  char *pg_type_name,
+											  int dump_flags)
+{
 	fout->preassigning_oids = true;
 
-	appendPQExpBuffer(upgrade_buffer, "\n-- For binary upgrade, must preserve pg_type oid\n");
-	appendPQExpBuffer(upgrade_buffer,
-	 "SELECT binary_upgrade.set_next_pg_type_oid('%u'::pg_catalog.oid, "
-												"'%u'::pg_catalog.oid, "
-												"$$%s$$::text);\n\n",
-					  pg_type_oid, pg_type_ns_oid, pg_type_name);
+	if ((dump_flags & TYPE_ASSIGN_BOTH) == 0)
+		exit_horribly(NULL, "binary_upgrade_set_type_oids_by_type_oid_impl(): invalid dump flags 0x%x",
+					  dump_flags);
 
-	/* we only support old >= 8.3 for binary upgrades */
-	appendPQExpBuffer(upgrade_query,
-					  "SELECT t.typarray, a.typname, a.typnamespace "
-					  "FROM pg_catalog.pg_type t "
-					  "     LEFT OUTER JOIN pg_catalog.pg_type a ON (t.typarray = a.oid) "
-					  "WHERE t.oid = '%u'::pg_catalog.oid;",
-					  pg_type_oid);
-
-	upgrade_res = ExecuteSqlQueryForSingleRow(fout, upgrade_query->data);
-
-	pg_type_array_oid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typarray")));
-	pg_type_array_nsoid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typnamespace")));
-	pg_type_array_name = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typname"));
-
-	if (OidIsValid(pg_type_array_oid))
+	if (dump_flags & TYPE_ASSIGN_BASE)
 	{
+		appendPQExpBuffer(upgrade_buffer, "\n-- For binary upgrade, must preserve pg_type oid\n");
 		appendPQExpBuffer(upgrade_buffer,
-			   "\n-- For binary upgrade, must preserve pg_type array oid\n");
-		appendPQExpBuffer(upgrade_buffer,
-						  "SELECT binary_upgrade.set_next_array_pg_type_oid('%u'::pg_catalog.oid, "
-						  "'%u'::pg_catalog.oid, $$%s$$::text);\n\n",
-						  pg_type_array_oid, pg_type_array_nsoid,
-						  pg_type_array_name);
+		 "SELECT binary_upgrade.set_next_pg_type_oid('%u'::pg_catalog.oid, "
+													"'%u'::pg_catalog.oid, "
+													"$$%s$$::text);\n\n",
+						  pg_type_oid, pg_type_ns_oid, pg_type_name);
 	}
 
-	PQclear(upgrade_res);
-	destroyPQExpBuffer(upgrade_query);
+	if (dump_flags & TYPE_ASSIGN_ARRAY)
+	{
+		PQExpBuffer upgrade_query = createPQExpBuffer();
+		PGresult   *upgrade_res;
+		Oid			pg_type_array_oid;
+		Oid			pg_type_array_nsoid;
+		char	   *pg_type_array_name;
+
+		/* we only support old >= 8.3 for binary upgrades */
+		appendPQExpBuffer(upgrade_query,
+						  "SELECT t.typarray, a.typname, a.typnamespace "
+						  "FROM pg_catalog.pg_type t "
+						  "     LEFT OUTER JOIN pg_catalog.pg_type a ON (t.typarray = a.oid) "
+						  "WHERE t.oid = '%u'::pg_catalog.oid;",
+						  pg_type_oid);
+
+		upgrade_res = ExecuteSqlQueryForSingleRow(fout, upgrade_query->data);
+
+		pg_type_array_oid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typarray")));
+		pg_type_array_nsoid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typnamespace")));
+		pg_type_array_name = PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "typname"));
+
+		if (OidIsValid(pg_type_array_oid))
+		{
+			appendPQExpBuffer(upgrade_buffer,
+				   "\n-- For binary upgrade, must preserve pg_type array oid\n");
+			appendPQExpBuffer(upgrade_buffer,
+							  "SELECT binary_upgrade.set_next_array_pg_type_oid('%u'::pg_catalog.oid, "
+							  "'%u'::pg_catalog.oid, $$%s$$::text);\n\n",
+							  pg_type_array_oid, pg_type_array_nsoid,
+							  pg_type_array_name);
+		}
+
+		PQclear(upgrade_res);
+		destroyPQExpBuffer(upgrade_query);
+	}
 }
 
 static bool
@@ -8771,10 +8805,21 @@ dumpBaseType(Archive *fout, TypeInfo *tyinfo)
 	appendPQExpBuffer(delq, "%s CASCADE;\n",
 					  qtypname);
 
-	/* We might already have a shell type, but setting pg_type_oid is harmless */
 	if (binary_upgrade)
-		binary_upgrade_set_type_oids_by_type_oid(fout, q, tyinfo->dobj.catId.oid,
-				tyinfo->dobj.namespace->dobj.catId.oid, tyinfo->dobj.name);
+	{
+		/*
+		 * If a shell type was defined and dumped, we already have an OID
+		 * preassignment for the base type. In that case, we don't want to
+		 * preassign it again, but we do want to preassign the array type that
+		 * will be created.
+		 */
+		bool has_shell = (tyinfo->shellType && tyinfo->shellType->dobj.dump);
+		int flags = has_shell ? TYPE_ASSIGN_ARRAY : TYPE_ASSIGN_BOTH;
+
+		binary_upgrade_set_type_oids_by_type_oid_impl(fout, q,
+				tyinfo->dobj.catId.oid, tyinfo->dobj.namespace->dobj.catId.oid,
+				tyinfo->dobj.name, flags);
+	}
 
 	appendPQExpBuffer(q,
 					  "CREATE TYPE %s (\n"
@@ -9466,10 +9511,12 @@ dumpShellType(Archive *fout, ShellTypeInfo *stinfo)
 	 */
 
 	if (binary_upgrade)
-		binary_upgrade_set_type_oids_by_type_oid(fout, q,
+		binary_upgrade_set_type_oids_by_type_oid_impl(fout, q,
 										   stinfo->baseType->dobj.catId.oid,
 										   stinfo->baseType->dobj.namespace->dobj.catId.oid,
-										   stinfo->baseType->dobj.name);
+										   stinfo->baseType->dobj.name,
+										   /* no array type for a shell type */
+										   TYPE_ASSIGN_BASE);
 
 	appendPQExpBuffer(q, "CREATE TYPE %s;\n",
 					  fmtId(stinfo->dobj.name));
