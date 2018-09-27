@@ -95,10 +95,6 @@ struct Archive
 	bool		exit_on_error;	/* whether to exit on SQL errors... */
 	int			n_errors;		/* number of errors (if no die) */
 
-	/* GPDB additions */
-	bool		preassigning_oids; /* whether the current entry is setting up
-									* preassigned OIDs (binary upgrade only) */
-
 	/* The rest is private */
 };
 

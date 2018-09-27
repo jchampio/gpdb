@@ -272,8 +272,7 @@ static int	dumpBlobs(Archive *fout, void *arg);
 static void dumpDatabase(Archive *AH);
 static void dumpEncoding(Archive *AH);
 static void dumpStdStrings(Archive *AH);
-static void binary_upgrade_set_namespace_oid(Archive *fout,
-								PQExpBuffer upgrade_buffer,
+static void binary_upgrade_set_namespace_oid(PQExpBuffer upgrade_buffer,
 								Oid pg_namespace_oid, char *namespacename);
 static void binary_upgrade_set_type_oids_by_type_oid(Archive *fout,
 								PQExpBuffer upgrade_buffer, Oid pg_type_oid,
@@ -3087,11 +3086,9 @@ dumpBlobs(Archive *fout, void *arg __attribute__((unused)))
 }
 
 static void
-binary_upgrade_set_namespace_oid(Archive *fout, PQExpBuffer upgrade_buffer,
+binary_upgrade_set_namespace_oid(PQExpBuffer upgrade_buffer,
 								 Oid pg_namespace_oid, char *namespacename)
 {
-	fout->preassigning_oids = true;
-
 	appendPQExpBuffer(upgrade_buffer, "\n-- For binary upgrade, must preserve pg_namespace oid\n");
 	appendPQExpBuffer(upgrade_buffer,
 	 "SELECT binary_upgrade.set_next_pg_namespace_oid('%u'::pg_catalog.oid, "
@@ -3120,8 +3117,6 @@ binary_upgrade_set_type_oids_by_type_oid_impl(Archive *fout,
 											  char *pg_type_name,
 											  int dump_flags)
 {
-	fout->preassigning_oids = true;
-
 	if ((dump_flags & TYPE_ASSIGN_BOTH) == 0)
 		exit_horribly(NULL, "binary_upgrade_set_type_oids_by_type_oid_impl(): invalid dump flags 0x%x",
 					  dump_flags);
@@ -3245,8 +3240,6 @@ binary_upgrade_set_type_oids_by_rel_oid_impl(Archive *fout,
 											PQfnumber(upgrade_res, "trel")));
 		Oid			pg_type_toast_nsoid = atooid(PQgetvalue(upgrade_res, 0,
 											PQfnumber(upgrade_res, "trelns")));
-
-		fout->preassigning_oids = true;
 
 		/*
 		 * GPDB: note that we compose the toast table name using the relation
@@ -3382,7 +3375,6 @@ binary_upgrade_set_pg_class_oids_impl(Archive *fout,
 		ao_visimapidxid = atooid(PQgetvalue(upgrade_res, 0, PQfnumber(upgrade_res, "visimapidxid")));
 	}
 
-	fout->preassigning_oids = true;
 	appendPQExpBuffer(upgrade_buffer,
 				   "\n-- For binary upgrade, must preserve pg_class oids\n");
 
@@ -8092,8 +8084,7 @@ dumpNamespace(Archive *fout, NamespaceInfo *nspinfo)
 	appendPQExpBuffer(delq, "DROP SCHEMA %s;\n", qnspname);
 
 	if (binary_upgrade)
-		binary_upgrade_set_namespace_oid(fout, q, nspinfo->dobj.catId.oid,
-										 qnspname);
+		binary_upgrade_set_namespace_oid(q, nspinfo->dobj.catId.oid, qnspname);
 
 	appendPQExpBuffer(q, "CREATE SCHEMA %s;\n", qnspname);
 
@@ -8361,8 +8352,6 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 		{
 			enum_oid = atooid(PQgetvalue(res, i, PQfnumber(res, "oid")));
 			label = PQgetvalue(res, i, PQfnumber(res, "enumlabel"));
-
-			fout->preassigning_oids = true;
 
 			if (i == 0)
 				appendPQExpBuffer(q, "\n-- For binary upgrade, must preserve pg_enum oids\n");

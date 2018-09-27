@@ -891,8 +891,7 @@ AtEOXact_DispatchOids(bool isCommit)
 	 *
 	 * In binary-upgrade mode, however, the OID pre-assign calls are not
 	 * done in the same transactions as the DDL commands that consume
-	 * the OIDs. Hence they need to survive end-of-xact. We'll check that they
-	 * are assigned later, during CheckPreassignedOidsFromBinaryUpgrade().
+	 * the OIDs. Hence they need to survive end-of-xact.
 	 */
 	if (!IsBinaryUpgrade)
 	{
@@ -908,30 +907,6 @@ AtEOXact_DispatchOids(bool isCommit)
 #endif
 		preassigned_oids = NIL;
 	}
-}
-
-
-/*
- * GPDB: for binary upgrade, make sure all preassigned OIDs have been used. We
- * couldn't perform this check during AtEOXact_DispatchOids() because we need
- * the OIDs to last to different transactions.
- */
-void
-CheckPreassignedOidsFromBinaryUpgrade(void)
-{
-	if (!preassigned_oids)
-		return;
-
-	while (preassigned_oids)
-	{
-		OidAssignment *p = (OidAssignment *) linitial(preassigned_oids);
-
-		elog(WARNING, "unused pre-assigned OID %u: catalog %u, namespace: %u, name: \"%s\"",
-			 p->oid, p->catalog, p->namespaceOid, p->objname);
-		preassigned_oids = list_delete_first(preassigned_oids);
-	}
-
-	elog(ERROR, "pre-assigned OIDs were leaked");
 }
 
 
