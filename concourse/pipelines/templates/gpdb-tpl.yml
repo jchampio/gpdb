@@ -102,6 +102,7 @@ groups:
   - gppkg
   - check_centos
   - gptransfer
+  - pg_upgrade
 {% endif %}
 {% if "UD" in test_sections %}
   ## --------------------------------------------------------------------
@@ -2118,7 +2119,48 @@ jobs:
   ensure:
     <<: *set_failed_two_clusters
 
-{% endif %}
+- name: pg_upgrade
+  ensure:
+    <<: *set_failed
+  on_success:
+    <<: *ccp_destroy
+  plan:
+  - aggregate:
+    - get: gpdb_src
+      passed: [icw_gporca_centos6]
+    - get: bin_gpdb_centos6
+      passed: [icw_gporca_centos6]
+      trigger: [[ test_trigger ]]
+    - get: icw_gporca_centos6_dump
+      passed: [icw_gporca_centos6]
+    - get: centos-gpdb-dev-6
+    - get: ccp_src
+  - put: terraform
+    params:
+      <<: *ccp_default_params
+      vars:
+        <<: *ccp_default_vars
+        instance_type: n1-standard-2
+        number_of_nodes: 2
+  - task: gen_cluster
+    file: ccp_src/ci/tasks/gen_cluster.yml
+    params:
+      <<: *ccp_gen_cluster_default_params
+      PLATFORM: centos6
+    input_mapping:
+      gpdb_binary: bin_gpdb_centos6
+  - task: set_gpinitsystem_config
+    file: gpdb_src/concourse/tasks/set_gpinitsystem_config.yml
+    params:
+      GPINITSYSTEM_CONFIG: gpdb_src/concourse/scripts/configurations/pg_upgrade_gpinitsystem_config
+  - task: gpinitsystem
+    file: ccp_src/ci/tasks/gpinitsystem.yml
+  - task: test_upgrade
+    file: gpdb_src/concourse/tasks/test_upgrade.yml
+    input_mapping:
+      sqldump: icw_gporca_centos6_dump
+
+{% endif %} # end CLI test_sections
 {% if "UD" in test_sections %}
 ## ======================================================================
 ##  _   _ ____
@@ -2397,6 +2439,7 @@ jobs:
       - MADlib_Test_planner_centos6
       - MADlib_Test_orca_centos7
       - MADlib_Test_planner_centos7
+      - pg_upgrade
       - gpaddmirrors
       - gpexpand
       - gpcheck
