@@ -48,6 +48,9 @@ groups:
   - icw_planner_centos6
   - icw_planner_ictcp_centos6
 {% endif %}
+{% if "centos6" in os_types and "CLI" in test_sections %}
+  - pg_upgrade
+{% endif %}
 {% if "centos7" in os_types %}
   - icw_gporca_centos7
   - icw_planner_centos7
@@ -102,7 +105,6 @@ groups:
   - gppkg
   - check_centos
   - gptransfer
-  - pg_upgrade
 {% endif %}
 {% if "UD" in test_sections %}
   ## --------------------------------------------------------------------
@@ -187,6 +189,9 @@ groups:
   - icw_planner_centos6
   - icw_planner_ictcp_centos6
   - compile_gpdb_centos6
+{% endif %}
+{% if "centos6" in os_types and "CLI" in test_sections %}
+  - pg_upgrade
 {% endif %}
 {% if "centos7" in os_types %}
   - icw_gporca_centos7
@@ -283,6 +288,9 @@ groups:
   - compile_gpdb_centos6
   - gptransfer
   - compile_gpdb_centos6
+{% if "centos6" in os_types and "ICW" in test_sections %}
+  - pg_upgrade
+{% endif %}
 
 {% endif %}
 {% if "UD" in test_sections %}
@@ -372,6 +380,17 @@ resources:
 
 {% endif %}
 {% endif %}
+{% if "centos6" in os_types and "ICW" in test_sections %}
+- name: icw_gporca_centos6_dump
+  type: s3
+  source:
+    access_key_id: {{bucket-access-key-id}}
+    bucket: {{test-data-bucket-name}}
+    secret_access_key: {{bucket-secret-access-key}}
+    region_name: {{aws-region}}
+    versioned_file: gpdb6/icw_gporca_centos6/dump.sql.xz
+
+{% endif %}
 {% if "CLI" in test_sections %}
 # a second cluster for gptransfer tests
 - name: terraform2
@@ -389,15 +408,6 @@ resources:
       region_name: {{aws-region}}
       bucket: gpdb5-pipeline-dynamic-terraform
       bucket_path: clusters-google/
-
-- name: icw_gporca_centos6_dump
-  type: s3
-  source:
-    access_key_id: {{bucket-access-key-id}}
-    bucket: {{test-data-bucket-name}}
-    secret_access_key: {{bucket-secret-access-key}}
-    region_name: {{aws-region}}
-    versioned_file: gpdb6/icw_gporca_centos6/dump.sql.xz
 
 - name: snowflake-simple-database-dump # remove this resource in favor of icw_gporca_centos6_dump once gpexpand works with a dump of ICW
   type: s3
@@ -2119,6 +2129,7 @@ jobs:
   ensure:
     <<: *set_failed_two_clusters
 
+{% if "centos6" in os_types and "ICW" in test_sections %}
 - name: pg_upgrade
   ensure:
     <<: *set_failed
@@ -2161,6 +2172,7 @@ jobs:
       sqldump: icw_gporca_centos6_dump
     params:
       NUMBER_OF_NODES: 2
+{% endif %}
 
 {% endif %} # end CLI test_sections
 {% if "UD" in test_sections %}
