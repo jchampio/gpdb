@@ -2159,6 +2159,8 @@ jobs:
     file: gpdb_src/concourse/tasks/test_upgrade.yml
     input_mapping:
       sqldump: icw_gporca_centos6_dump
+    params:
+      NUMBER_OF_NODES: 2
 
 {% endif %} # end CLI test_sections
 {% if "UD" in test_sections %}

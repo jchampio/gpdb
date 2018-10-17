@@ -18,9 +18,9 @@ inputs:
 run:
   path: gpdb_src/concourse/scripts/test_upgrade.bash
   args:
-    - 2
     - bin_gpdb_centos6
     - sqldump/dump.sql.xz
 
 params:
   DEBUG_UPGRADE: ""
+  NUMBER_OF_NODES: 2

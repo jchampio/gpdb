@@ -197,23 +197,25 @@ compare_dumps() {
 
 CLUSTER_NAME=$(cat ./terraform*/name)
 
-NUMBER_OF_NODES=$1
+GPDB_TARBALL_DIR=${1:-}
+
+if [ -z "${GPDB_TARBALL_DIR}" ]; then
+  echo "Using default directory"
+fi
+
+SQLDUMP_FILE=${2:-}
+
+if [ -z "${SQLDUMP_FILE}" ]; then
+  echo "Using default SQL dump"
+fi
+
+# Use the third argument for the number of hosts to connect to; if that's not
+# given, fall back to the NUMBER_OF_NODES environment variable.
+NUMBER_OF_NODES=${3:-${NUMBER_OF_NODES:-}}
 
 if [ -z ${NUMBER_OF_NODES} ]; then
   echo "Number of nodes must be supplied to this script"
   exit 1
-fi
-
-GPDB_TARBALL_DIR=$2
-
-if [ -z "{GPDB_TARBALL_DIR}" ]; then
-  echo "Using default directory"
-fi
-
-SQLDUMP_FILE=$3
-
-if [ -z "${SQLDUMP_FILE}" ]; then
-  echo "Using default SQL dump"
 fi
 
 old_dump=/tmp/pre_upgrade.sql
