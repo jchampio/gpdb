@@ -221,8 +221,8 @@ test_mdunlink_co_all_columns_full_concurrency(void **state)
 	mdunlink_ao(PATH_TO_DATA_FILE);
 
 	/*
-	 * note num_unlink_called is one less than total files because .0 is NOT unlinked
-	 *    by mdunlink_ao()
+	 * Note num_unlink_called is one less than total files because .0 is NOT unlinked
+	 * by mdunlink_ao()
 	 */
 	assert_true(num_unlink_called == (MAX_AOREL_CONCURRENCY * (MaxHeapAttributeNumber + 1)) - 1);
 	assert_true(unlink_passing);
