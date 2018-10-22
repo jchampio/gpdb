@@ -37,14 +37,8 @@
 #include "common/relpath.h"
 #include "utils/guc.h"
 
-static bool
-aoRelFileOperationCallbackUnlinkFiles(const int segno,
-									  const aoRelfileOperationType_t operation,
-									  const aoRelFileOperationData_t *data);
-static bool
-aoRelFileOperationCallbackCopyFiles(const int segno,
-                                    const aoRelfileOperationType_t operation,
-                                    const aoRelFileOperationData_t *data);
+static bool unlink_extent_file(int segno, void *ctx);
+static bool copy_extent_file(int segno, void *ctx);
 
 int
 AOSegmentFilePathNameLen(Relation rel)
@@ -208,35 +202,36 @@ TruncateAOSegmentFile(File fd, Relation rel, int32 segFileNum, int64 offset)
 		xlog_ao_truncate(rel->rd_node, segFileNum, offset);
 }
 
+struct unlink_ctx {
+	char *segPath;
+	char *segpathSuffixPosition;
+};
+
 void
 mdunlink_ao(const char *path)
 {
 	int pathSize = strlen(path);
 	char *segPath = (char *) palloc(pathSize + 12);
 	char *segPathSuffixPosition = segPath + pathSize;
-	aoRelFileOperationData_t data;
+	struct unlink_ctx unlinkFiles = { 0 };
 
 	strncpy(segPath, path, pathSize);
 
-	data.operation = AORELFILEOP_UNLINK_FILES;
-	data.callbackData.unlinkFiles.segPath = segPath;
-	data.callbackData.unlinkFiles.segpathSuffixPosition = segPathSuffixPosition;
-	aoRelfileOperationExecute(AORELFILEOP_UNLINK_FILES,
-							  aoRelFileOperationCallbackUnlinkFiles, &data);
+	unlinkFiles.segPath = segPath;
+	unlinkFiles.segpathSuffixPosition = segPathSuffixPosition;
+
+	ao_foreach_extent_file(unlink_extent_file, &unlinkFiles);
 
 	pfree(segPath);
 }
 
-bool
-aoRelFileOperationCallbackUnlinkFiles(const int segno,
-									  const aoRelfileOperationType_t operation,
-									  const aoRelFileOperationData_t *data)
+static bool
+unlink_extent_file(const int segno, void *ctx)
 {
-	Assert(AORELFILEOP_UNLINK_FILES == data->operation);
-	Assert(AORELFILEOP_UNLINK_FILES == operation);
+	const struct unlink_ctx *unlinkFiles = ctx;
 
-	char *segPath = data->callbackData.unlinkFiles.segPath;
-	char *segPathSuffixPosition = data->callbackData.unlinkFiles.segpathSuffixPosition;
+	char *segPath = unlinkFiles->segPath;
+	char *segPathSuffixPosition = unlinkFiles->segpathSuffixPosition;
 
 	sprintf(segPathSuffixPosition, ".%u", segno);
 	if (unlink(segPath) != 0)
@@ -333,6 +328,13 @@ copy_file(char *srcsegpath, char *dstsegpath,
 	pfree(buffer);
 }
 
+struct copy_ctx {
+	char *srcPath;
+	char *dstPath;
+	RelFileNode dst;
+	bool useWal;
+};
+
 /*
  * Like copy_relation_data(), but for AO tables.
  *
@@ -345,7 +347,7 @@ copy_append_only_data(RelFileNode src, RelFileNode dst,
 	char *srcPath;
 	char *dstPath;
 	bool useWal;
-	aoRelFileOperationData_t data;
+	struct copy_ctx copyFiles = { 0 };
 	/*
 	 * We need to log the copied data in WAL iff WAL archiving/streaming is
 	 * enabled AND it's a permanent relation.
@@ -357,30 +359,23 @@ copy_append_only_data(RelFileNode src, RelFileNode dst,
 
 	copy_file(srcPath, dstPath, dst, 0, useWal);
 
-	data.operation = AORELFILEOP_COPY_FILES;
-	data.callbackData.copyFiles.srcPath = srcPath;
-	data.callbackData.copyFiles.dstPath = dstPath;
-	data.callbackData.copyFiles.dst = dst;
-	data.callbackData.copyFiles.useWal = useWal;
-    aoRelfileOperationExecute(AORELFILEOP_COPY_FILES,
-                              aoRelFileOperationCallbackCopyFiles, &data);
+	copyFiles.srcPath = srcPath;
+	copyFiles.dstPath = dstPath;
+	copyFiles.dst = dst;
+	copyFiles.useWal = useWal;
+
+	ao_foreach_extent_file(copy_extent_file, &copyFiles);
 }
 
-bool
-aoRelFileOperationCallbackCopyFiles(const int segno, const aoRelfileOperationType_t operation,
-                                    const aoRelFileOperationData_t *data)
+static bool
+copy_extent_file(const int segno, void *ctx)
 {
-	Assert(AORELFILEOP_COPY_FILES == data->operation);
-	Assert(AORELFILEOP_COPY_FILES == operation);
+	const struct copy_ctx *copyFiles = ctx;
 
 	char srcSegPath[MAXPGPATH + 12];
 	char dstSegPath[MAXPGPATH + 12];
-	char *srcPath = data->callbackData.copyFiles.srcPath;
-	char *dstPath = data->callbackData.copyFiles.dstPath;
-	RelFileNode dst = data->callbackData.copyFiles.dst;
-    bool useWal = data->callbackData.copyFiles.useWal;
 
-	sprintf(srcSegPath, "%s.%u", srcPath, segno);
+	sprintf(srcSegPath, "%s.%u", copyFiles->srcPath, segno);
 	if (access(srcSegPath, F_OK) != 0)
 	{
 		/* ENOENT is expected after the end of the extensions */
@@ -390,8 +385,8 @@ aoRelFileOperationCallbackCopyFiles(const int segno, const aoRelfileOperationTyp
 							errmsg("access failed for file \"%s\": %m", srcSegPath)));
 		return false;
 	}
-	sprintf(dstSegPath, "%s.%u", dstPath, segno);
-	copy_file(srcSegPath, dstSegPath, dst, segno, useWal);
+	sprintf(dstSegPath, "%s.%u", copyFiles->dstPath, segno);
+	copy_file(srcSegPath, dstSegPath, copyFiles->dst, segno, copyFiles->useWal);
 
 	return true;
 }

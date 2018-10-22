@@ -48,9 +48,7 @@
  *
  */
 void
-aoRelfileOperationExecute(const aoRelfileOperationType_t operation,
-                          const aoRelFileFunction_t callback,
-                          const aoRelFileOperationData_t *data)
+ao_foreach_extent_file(ao_extent_callback callback, void *ctx)
 {
     int segno;
     int colnum;
@@ -66,14 +64,14 @@ aoRelfileOperationExecute(const aoRelfileOperationType_t operation,
     for (colnum = 1; colnum <= MaxHeapAttributeNumber; colnum++)
     {
         segno = colnum * AOTupleId_MultiplierSegmentFileNum;
-        if (!callback(segno, operation, data))
+        if (!callback(segno, ctx))
             break;
     }
 
     segNumberArraySize = 0;
     for (segno = 1; segno < MAX_AOREL_CONCURRENCY; segno++)
     {
-        if (!callback(segno, operation, data))
+        if (!callback(segno, ctx))
             continue;
         segNumberArray[segNumberArraySize] = segno;
         segNumberArraySize++;
@@ -84,7 +82,7 @@ aoRelfileOperationExecute(const aoRelfileOperationType_t operation,
         for (colnum = 1; colnum <= MaxHeapAttributeNumber; colnum++)
         {
             segno = colnum * AOTupleId_MultiplierSegmentFileNum + segNumberArray[concurrencyLevel];
-            if (!callback(segno, operation, data))
+            if (!callback(segno, ctx))
                 break;
         }
     }

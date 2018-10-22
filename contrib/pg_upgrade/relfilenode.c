@@ -25,10 +25,7 @@ static void transfer_relfile(pageCnvCtx *pageConverter, FileNameMap *map,
 static bool transfer_relfile_segment(int segno, pageCnvCtx *pageConverter,
 									 FileNameMap *map, const char *suffix);
 static void transfer_ao(pageCnvCtx *pageConverter, FileNameMap *map);
-static bool aoRelFileOperationCallbackUpgradeFiles(
-        const int segno,
-        const aoRelfileOperationType_t operation,
-        const aoRelFileOperationData_t *callbackArgs);
+static bool transfer_extent_file(int segno, void *ctx);
 
 /*
  * transfer_all_new_tablespaces()
@@ -368,31 +365,31 @@ transfer_relfile_segment(int segno, pageCnvCtx *pageConverter, FileNameMap *map,
 	return true;
 }
 
+struct transfer_ctx {
+	pageCnvCtx *pageConverter;
+	FileNameMap *map;
+};
+
 static void
 transfer_ao(pageCnvCtx *pageConverter, FileNameMap *map)
 {
-	aoRelFileOperationData_t data;
+	struct transfer_ctx upgradeFiles = { 0 };
 
 	transfer_relfile_segment(0, pageConverter, map, "");
 
-	data.operation = AORELFILEOP_UPGRADE_FILES;
-	data.callbackData.upgradeFiles.pageConverter = pageConverter;
-	data.callbackData.upgradeFiles.map = map;
-    aoRelfileOperationExecute(AORELFILEOP_UPGRADE_FILES,
-                              aoRelFileOperationCallbackUpgradeFiles, &data);
+	upgradeFiles.pageConverter = pageConverter;
+	upgradeFiles.map = map;
+
+	ao_foreach_extent_file(transfer_extent_file, &upgradeFiles);
 }
 
-bool
-aoRelFileOperationCallbackUpgradeFiles(
-        const int segno,
-        const aoRelfileOperationType_t operation,
-        const aoRelFileOperationData_t *callbackArgs)
+static bool
+transfer_extent_file(const int segno, void *ctx)
 {
-	Assert(AORELFILEOP_UPGRADE_FILES == callbackArgs->operation);
-	Assert(AORELFILEOP_UPGRADE_FILES == operation);
+	const struct transfer_ctx *upgradeFiles = ctx;
 
-	if (!transfer_relfile_segment(segno, callbackArgs->callbackData.upgradeFiles.pageConverter,
-								  callbackArgs->callbackData.upgradeFiles.map , ""))
+	if (!transfer_relfile_segment(segno, upgradeFiles->pageConverter,
+								  upgradeFiles->map , ""))
 		return false;
 
 	return true;

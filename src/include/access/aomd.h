@@ -54,43 +54,14 @@ mdunlink_ao(const char *path);
 extern void
 copy_append_only_data(RelFileNode src, RelFileNode dst, BackendId backendid, char relpersistence);
 
-typedef enum
-{
-	AORELFILEOP_UPGRADE_FILES = 1,
-	AORELFILEOP_UNLINK_FILES  = 2,
-	AORELFILEOP_COPY_FILES = 3
-} aoRelfileOperationType_t;
-
-typedef struct aoRelFileOperationData {
-	aoRelfileOperationType_t operation;
-	union {
-		struct {
-			void *pageConverter;
-			void *map;
-		} upgradeFiles;
-		struct {
-			char *segPath;
-			char *segpathSuffixPosition;
-		} unlinkFiles;
-		struct {
-			char *srcPath;
-			char *dstPath;
-            RelFileNode dst;
-			bool useWal;
-		} copyFiles;
-	} callbackData;
-} aoRelFileOperationData_t;
-
 /*
- * return value should be true if the this function correctly performed its
- *   underlying operation as expected on the segno and false otherwise.
+ * return value should be true if the callback was able to find the given
+ * segment number on disk and false otherwise. Failures during operation should
+ * be handled out of band, either with a PG_THROW/elog/etc., or through the
+ * passed user context.
  */
-typedef bool (*aoRelFileFunction_t)(const int segno, const aoRelfileOperationType_t operation,
-                            const aoRelFileOperationData_t *callbackArgs);
+typedef bool (*ao_extent_callback)(int segno, void *ctx);
 
-extern void
-aoRelfileOperationExecute(const aoRelfileOperationType_t operation,
-						  const aoRelFileFunction_t callback,
-                          const aoRelFileOperationData_t *data);
+extern void ao_foreach_extent_file(ao_extent_callback callback, void *ctx);
 
 #endif							/* AOMD_H */
