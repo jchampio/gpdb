@@ -18,6 +18,10 @@ MASTER_HOST=mdw
 OLD_GPHOME=/usr/local/greenplum-db-devel
 NEW_GPHOME=/usr/local/gpdb_master
 
+# The old and new clusters' master data directories.
+OLD_MASTER_DATA_DIRECTORY=/data/gpdata/master/gpseg-1
+NEW_MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1
+
 DIRNAME=$(dirname "$0")
 
 cat << EOF
@@ -98,7 +102,7 @@ gpinitsystem_for_upgrade() {
     # Greenplum clusters should be upgraded when GUC settings' defaults change.
     ssh -ttn ${MASTER_HOST} '
         source '"${OLD_GPHOME}"'/greenplum_path.sh
-        gpstop -a -d /data/gpdata/master/gpseg-1
+        gpstop -a -d '"${OLD_MASTER_DATA_DIRECTORY}"'
 
         source '"${NEW_GPHOME}"'/greenplum_path.sh
         sed -e '\''s|\(/data/gpdata/\w\+\)|\1-new|g'\'' gpinitsystem_config > gpinitsystem_config_new
@@ -106,7 +110,7 @@ gpinitsystem_for_upgrade() {
         # echo "standard_conforming_strings = off" >> upgrade_addopts
         # echo "escape_string_warning = off" >> upgrade_addopts
         gpinitsystem -a -c ~gpadmin/gpinitsystem_config_new -h ~gpadmin/segment_host_list # -p ~gpadmin/upgrade_addopts
-        gpstop -a -d /data/gpdata/master-new/gpseg-1
+        gpstop -a -d '"${NEW_MASTER_DATA_DIRECTORY}"'
     '
 }
 
@@ -160,7 +164,7 @@ get_segment_datadirs() {
 start_upgraded_cluster() {
     ssh -n ${MASTER_HOST} "
         source ${NEW_GPHOME}/greenplum_path.sh
-        MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1 gpstart -a -v
+        MASTER_DATA_DIRECTORY='${NEW_MASTER_DATA_DIRECTORY}' gpstart -a -v
     "
 }
 
@@ -244,12 +248,16 @@ gpinitsystem_for_upgrade
 
 # TODO: we need to switch the mode argument according to GPDB version
 echo "Upgrading master at ${MASTER_HOST}..."
-run_upgrade ${MASTER_HOST} "/data/gpdata/master/gpseg-1" --mode=dispatcher
+run_upgrade ${MASTER_HOST} "${OLD_MASTER_DATA_DIRECTORY}" --mode=dispatcher
+
 while read -u3 hostname datadir; do
     echo "Upgrading segment at '$hostname' ($datadir)..."
 
     newdatadir=$(sed -e 's|\(/data/gpdata/\w\+\)|\1-new|g' <<< "$datadir")
-    ssh -n ${MASTER_HOST} rsync -r --delete /data/gpdata/master-new/gpseg-1/ "$hostname:$newdatadir" \
+
+    # NOTE: the trailing slash on the rsync source directory is important! It
+    # means to transfer the directory's contents and not the directory itself.
+    ssh -n ${MASTER_HOST} rsync -r --delete "${NEW_MASTER_DATA_DIRECTORY}/" "$hostname:$newdatadir" \
         --exclude /postgresql.conf \
         --exclude /pg_hba.conf \
         --exclude /postmaster.opts \
