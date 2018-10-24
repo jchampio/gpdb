@@ -150,7 +150,7 @@ run_upgrade() {
         time pg_upgrade '"${upgrade_opts}"' '"$*"' \
             -b '"${OLD_GPHOME}"'/bin/ -B '"${NEW_GPHOME}"'/bin/ \
             -d '"$datadir"' \
-            -D '"$(sed -e 's|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g' <<< "$datadir")"
+            -D '"$(get_new_datadir "$datadir")"
 }
 
 dump_old_master_query() {
@@ -174,6 +174,13 @@ get_segment_datadirs() {
         q="SELECT hostname, fselocation FROM gp_segment_configuration JOIN pg_catalog.pg_filespace_entry ON (dbid = fsedbid) WHERE content <> -1"
         dump_old_master_query "$q"
     fi
+}
+
+get_new_datadir() {
+    # Given a data directory for the old cluster, generates a new data directory
+    # based on that path and prints it to stdout.
+    local datadir=$1
+    sed -e 's|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g' <<< "$datadir"
 }
 
 start_upgraded_cluster() {
@@ -263,7 +270,7 @@ run_upgrade ${MASTER_HOST} "${OLD_MASTER_DATA_DIRECTORY}" --mode=dispatcher
 while read -u30 hostname datadir; do
     echo "Upgrading segment at '$hostname' ($datadir)..."
 
-    newdatadir=$(sed -e 's|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g' <<< "$datadir")
+    newdatadir=$(get_new_datadir "$datadir")
 
     # NOTE: the trailing slash on the rsync source directory is important! It
     # means to transfer the directory's contents and not the directory itself.
