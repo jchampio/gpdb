@@ -98,6 +98,17 @@ create_new_datadir() {
     '\'''
 }
 
+prep_new_cluster() {
+    # Install the new GPDB version on all nodes and create the new data
+    # directory.
+    local cluster_name=$(cat ./terraform*/name)
+
+    for ((i=0; i<${NUMBER_OF_NODES}; ++i)); do
+        extract_gpdb_tarball ccp-${cluster_name}-$i ${GPDB_TARBALL_DIR:-gpdb_binary}
+        create_new_datadir ccp-${cluster_name}-$i
+    done
+}
+
 gpinitsystem_for_upgrade() {
     # Stop the old cluster and init a new one.
     #
@@ -211,8 +222,6 @@ compare_dumps() {
     "
 }
 
-CLUSTER_NAME=$(cat ./terraform*/name)
-
 GPDB_TARBALL_DIR=${1:-}
 
 if [ -z "${GPDB_TARBALL_DIR}" ]; then
@@ -241,10 +250,7 @@ set -v
 
 time load_old_db_data ${SQLDUMP_FILE:-sqldump/dump.sql.xz}
 
-for ((i=0; i<${NUMBER_OF_NODES}; ++i)); do
-  extract_gpdb_tarball ccp-${CLUSTER_NAME}-$i ${GPDB_TARBALL_DIR:-gpdb_binary}
-  create_new_datadir ccp-${CLUSTER_NAME}-$i
-done
+prep_new_cluster
 
 time dump_cluster "$old_dump"
 get_segment_datadirs > /tmp/segment_datadirs.txt
