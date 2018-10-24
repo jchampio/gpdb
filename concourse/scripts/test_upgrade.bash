@@ -250,7 +250,7 @@ gpinitsystem_for_upgrade
 echo "Upgrading master at ${MASTER_HOST}..."
 run_upgrade ${MASTER_HOST} "${OLD_MASTER_DATA_DIRECTORY}" --mode=dispatcher
 
-while read -u3 hostname datadir; do
+while read -u30 hostname datadir; do
     echo "Upgrading segment at '$hostname' ($datadir)..."
 
     newdatadir=$(sed -e 's|\(/data/gpdata/\w\+\)|\1-new|g' <<< "$datadir")
@@ -267,7 +267,7 @@ while read -u3 hostname datadir; do
         --exclude /gpperfmon/
 
     run_upgrade "$hostname" "$datadir" --mode=segment
-done 3< /tmp/segment_datadirs.txt
+done 30< /tmp/segment_datadirs.txt
 
 start_upgraded_cluster
 time apply_sql_fixups
