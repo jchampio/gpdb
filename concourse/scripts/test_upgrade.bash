@@ -22,6 +22,10 @@ NEW_GPHOME=/usr/local/gpdb_master
 OLD_MASTER_DATA_DIRECTORY=/data/gpdata/master/gpseg-1
 NEW_MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1
 
+# The data directory prefix, assumed to be shared by all segments across the
+# cluster.
+DATADIR_PREFIX=/data/gpdata
+
 DIRNAME=$(dirname "$0")
 
 cat << EOF
@@ -85,7 +89,7 @@ create_new_datadir() {
     # Create a -new directory for every data directory that already exists.
     # This is what we'll be init'ing the new database into.
     ssh -ttn "$node_hostname" 'sudo bash -c '\''
-        for dir in $(find /data/gpdata/* -maxdepth 0 -type d); do
+        for dir in $(find '"${DATADIR_PREFIX}"'/* -maxdepth 0 -type d); do
             newdir="${dir}-new"
 
             mkdir -p "$newdir"
@@ -105,7 +109,7 @@ gpinitsystem_for_upgrade() {
         gpstop -a -d '"${OLD_MASTER_DATA_DIRECTORY}"'
 
         source '"${NEW_GPHOME}"'/greenplum_path.sh
-        sed -e '\''s|\(/data/gpdata/\w\+\)|\1-new|g'\'' gpinitsystem_config > gpinitsystem_config_new
+        sed -e '\''s|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g'\'' gpinitsystem_config > gpinitsystem_config_new
         # echo "HEAP_CHECKSUM=off" >> gpinitsystem_config_new
         # echo "standard_conforming_strings = off" >> upgrade_addopts
         # echo "escape_string_warning = off" >> upgrade_addopts
@@ -135,7 +139,7 @@ run_upgrade() {
         time pg_upgrade '"${upgrade_opts}"' '"$*"' \
             -b '"${OLD_GPHOME}"'/bin/ -B '"${NEW_GPHOME}"'/bin/ \
             -d '"$datadir"' \
-            -D '"$(sed -e 's|\(/data/gpdata/\w\+\)|\1-new|g' <<< "$datadir")"
+            -D '"$(sed -e 's|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g' <<< "$datadir")"
 }
 
 dump_old_master_query() {
@@ -253,7 +257,7 @@ run_upgrade ${MASTER_HOST} "${OLD_MASTER_DATA_DIRECTORY}" --mode=dispatcher
 while read -u30 hostname datadir; do
     echo "Upgrading segment at '$hostname' ($datadir)..."
 
-    newdatadir=$(sed -e 's|\(/data/gpdata/\w\+\)|\1-new|g' <<< "$datadir")
+    newdatadir=$(sed -e 's|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g' <<< "$datadir")
 
     # NOTE: the trailing slash on the rsync source directory is important! It
     # means to transfer the directory's contents and not the directory itself.
