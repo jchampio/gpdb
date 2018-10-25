@@ -8,23 +8,21 @@ set -euo pipefail
 # output.
 DEBUG_UPGRADE=${DEBUG_UPGRADE:-}
 
-./ccp_src/scripts/setup_ssh_to_cluster.sh
-
 # The host running the master GPDB segment.
-MASTER_HOST=mdw
+MASTER_HOST=
 
 # The GPHOME directories (containing greenplum_path.sh, the bin/ directory, and
 # so on) for the old and new clusters, respectively.
-OLD_GPHOME=/usr/local/greenplum-db-devel
-NEW_GPHOME=/usr/local/gpdb_master
-
-# The old and new clusters' master data directories.
-OLD_MASTER_DATA_DIRECTORY=/data/gpdata/master/gpseg-1
-NEW_MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1
+OLD_GPHOME=
+NEW_GPHOME=
 
 # The data directory prefix, assumed to be shared by all segments across the
 # cluster.
-DATADIR_PREFIX=/data/gpdata
+DATADIR_PREFIX=
+
+# The old and new clusters' master data directories.
+OLD_MASTER_DATA_DIRECTORY=
+NEW_MASTER_DATA_DIRECTORY=
 
 DIRNAME=$(dirname "$0")
 
@@ -86,27 +84,54 @@ extract_gpdb_tarball() {
 create_new_datadir() {
     local node_hostname=$1
 
+    # We only need superuser access to create the new data directory when
+    # running in Concourse.
+    if (( "${CONCOURSE_MODE}" )); then
+        SUDO=sudo
+    else
+        SUDO=
+    fi
+
     # Create a -new directory for every data directory that already exists.
     # This is what we'll be init'ing the new database into.
-    ssh -ttn "$node_hostname" 'sudo bash -c '\''
+    ssh -ttn "$node_hostname" "$SUDO"' bash -c '\''
         for dir in $(find '"${DATADIR_PREFIX}"'/* -maxdepth 0 -type d); do
             newdir="${dir}-new"
 
             mkdir -p "$newdir"
-            chown gpadmin:gpadmin "$newdir"
+
+            if (( "'"${CONCOURSE_MODE}"'" )); then
+                chown gpadmin:gpadmin "$newdir"
+            fi
         done
     '\'''
 }
 
 prep_new_cluster() {
-    # Install the new GPDB version on all nodes and create the new data
-    # directory.
-    local cluster_name=$(cat ./terraform*/name)
+    # Install the new GPDB version on all nodes, if running in Concourse mode,
+    # and create the new data directories.
+    if (( $CONCOURSE_MODE )); then
+        local cluster_name=$(cat ./terraform*/name)
 
-    for ((i=0; i<${NUMBER_OF_NODES}; ++i)); do
-        extract_gpdb_tarball ccp-${cluster_name}-$i ${GPDB_TARBALL_DIR:-gpdb_binary}
-        create_new_datadir ccp-${cluster_name}-$i
-    done
+        if [ -z "${NUMBER_OF_NODES}" ]; then
+            echo "Number of nodes must be supplied to this script"
+            exit 1
+        fi
+
+        if [ -z "${GPDB_TARBALL_DIR}" ]; then
+            GPDB_TARBALL_DIR=gpdb_binary
+            echo "Using default tarball directory: $GPDB_TARBALL_DIR"
+        fi
+
+        ./ccp_src/scripts/setup_ssh_to_cluster.sh
+
+        for ((i=0; i<${NUMBER_OF_NODES}; ++i)); do
+            extract_gpdb_tarball ccp-${cluster_name}-$i ${GPDB_TARBALL_DIR}
+            create_new_datadir ccp-${cluster_name}-$i
+        done
+    else
+        create_new_datadir localhost
+    fi
 }
 
 gpinitsystem_for_upgrade() {
@@ -160,6 +185,18 @@ dump_old_master_query() {
         source '"${OLD_GPHOME}"'/greenplum_path.sh
         psql postgres --quiet --no-align --tuples-only -F"'$'\t''" -c "'$1'"
     '
+}
+
+get_master_datadir() {
+    # Prints the old cluster's master data directory to stdout.
+
+    # First try dumping the 6.0 version...
+    local q="SELECT datadir FROM gp_segment_configuration WHERE content = -1 AND role = 'p'"
+    if ! dump_old_master_query "$q" 2>/dev/null; then
+        # ...and then fall back to pre-6.0.
+        q="SELECT fselocation FROM gp_segment_configuration JOIN pg_catalog.pg_filespace_entry ON (dbid = fsedbid) WHERE content = -1 AND role = 'p'"
+        dump_old_master_query "$q"
+    fi
 }
 
 get_segment_datadirs() {
@@ -229,25 +266,58 @@ compare_dumps() {
     "
 }
 
-GPDB_TARBALL_DIR=${1:-}
+#
+# -c    operation as part of Concourse (assume standard locations)
+# -n    number of nodes (Concourse-only)
+# -s    sqldump file location
+# -t    GPDB tarball location (Concourse-only)
+#
 
-if [ -z "${GPDB_TARBALL_DIR}" ]; then
-  echo "Using default directory"
-fi
+# Whether we're running as part of a Concourse build.
+CONCOURSE_MODE=0
+SQLDUMP_FILE=
+GPDB_TARBALL_DIR=
 
-SQLDUMP_FILE=${2:-}
-
-if [ -z "${SQLDUMP_FILE}" ]; then
-  echo "Using default SQL dump"
-fi
-
-# Use the third argument for the number of hosts to connect to; if that's not
+# Use the -n argument for the number of hosts to connect to; if that's not
 # given, fall back to the NUMBER_OF_NODES environment variable.
-NUMBER_OF_NODES=${3:-${NUMBER_OF_NODES:-}}
+NUMBER_OF_NODES=${NUMBER_OF_NODES:-}
 
-if [ -z ${NUMBER_OF_NODES} ]; then
-  echo "Number of nodes must be supplied to this script"
-  exit 1
+while getopts "cn:s:t:" option; do
+    case "$option" in
+    c)
+        CONCOURSE_MODE=1
+        ;;
+    n)
+        NUMBER_OF_NODES=$OPTARG
+        ;;
+    s)
+        SQLDUMP_FILE=$OPTARG
+        ;;
+    t)
+        GPDB_TARBALL_DIR=$OPTARG
+        ;;
+    *)
+        exit 1
+        ;;
+    esac
+done
+
+# Set up the globals according to whether we're running in local or Concourse
+# mode.
+if (( $CONCOURSE_MODE )); then
+    MASTER_HOST=mdw
+    OLD_GPHOME=/usr/local/greenplum-db-devel
+    NEW_GPHOME=/usr/local/gpdb_master
+    DATADIR_PREFIX=/data/gpdata
+    OLD_MASTER_DATA_DIRECTORY=/data/gpdata/master/gpseg-1
+    NEW_MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1
+else
+    MASTER_HOST=localhost
+    OLD_GPHOME=${GPHOME}
+    NEW_GPHOME=${GPHOME}
+    DATADIR_PREFIX=$(dirname $(dirname ${MASTER_DATA_DIRECTORY})) # FIXME
+    OLD_MASTER_DATA_DIRECTORY=${MASTER_DATA_DIRECTORY}
+    NEW_MASTER_DATA_DIRECTORY=$(get_new_datadir "${MASTER_DATA_DIRECTORY}")
 fi
 
 old_dump=/tmp/pre_upgrade.sql
@@ -255,7 +325,10 @@ new_dump=/tmp/post_upgrade.sql
 
 set -v
 
-time load_old_db_data ${SQLDUMP_FILE:-sqldump/dump.sql.xz}
+# Load a SQL dump if given with the -s option.
+if [ -n "${SQLDUMP_FILE}" ]; then
+    time load_old_db_data "${SQLDUMP_FILE}"
+fi
 
 prep_new_cluster
 
