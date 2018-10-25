@@ -123,8 +123,6 @@ prep_new_cluster() {
             echo "Using default tarball directory: $GPDB_TARBALL_DIR"
         fi
 
-        ./ccp_src/scripts/setup_ssh_to_cluster.sh
-
         for ((i=0; i<${NUMBER_OF_NODES}; ++i)); do
             extract_gpdb_tarball ccp-${cluster_name}-$i ${GPDB_TARBALL_DIR}
             create_new_datadir ccp-${cluster_name}-$i
@@ -324,6 +322,11 @@ old_dump=/tmp/pre_upgrade.sql
 new_dump=/tmp/post_upgrade.sql
 
 set -v
+
+if (( ${CONCOURSE_MODE} )); then
+    # Make sure we can contact every host in the cluster.
+    ./ccp_src/scripts/setup_ssh_to_cluster.sh
+fi
 
 # Load a SQL dump if given with the -s option.
 if [ -n "${SQLDUMP_FILE}" ]; then
