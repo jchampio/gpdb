@@ -145,11 +145,11 @@ gpinitsystem_for_upgrade() {
         gpstop -a -d '"${OLD_MASTER_DATA_DIRECTORY}"'
 
         source '"${NEW_GPHOME}"'/greenplum_path.sh
-        sed -e '\''s|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g'\'' gpinitsystem_config > gpinitsystem_config_new
+        sed -e '\''s|\('"${DATADIR_PREFIX}"'/\w\+\)|\1-new|g'\'' '"${GPINITSYSTEM_CONFIG}"' > gpinitsystem_config_new
         # echo "HEAP_CHECKSUM=off" >> gpinitsystem_config_new
         # echo "standard_conforming_strings = off" >> upgrade_addopts
         # echo "escape_string_warning = off" >> upgrade_addopts
-        gpinitsystem -a -c ~gpadmin/gpinitsystem_config_new -h ~gpadmin/segment_host_list # -p ~gpadmin/upgrade_addopts
+        gpinitsystem -a -c gpinitsystem_config_new -h '"${GPINITSYSTEM_HOSTFILE}"' # -p ~gpadmin/upgrade_addopts
         gpstop -a -d '"${NEW_MASTER_DATA_DIRECTORY}"'
     '
 }
@@ -314,6 +314,8 @@ if (( $CONCOURSE_MODE )); then
     OLD_MASTER_DATA_DIRECTORY=/data/gpdata/master/gpseg-1
     NEW_MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1
     PSQL_ADDOPTS=
+    GPINITSYSTEM_CONFIG=gpinitsystem_config
+    GPINITSYSTEM_HOSTFILE=segment_host_list
 else
     MASTER_HOST=localhost
     OLD_GPHOME=${GPHOME}
@@ -322,6 +324,8 @@ else
     OLD_MASTER_DATA_DIRECTORY=${MASTER_DATA_DIRECTORY}
     NEW_MASTER_DATA_DIRECTORY=$(get_new_datadir "${MASTER_DATA_DIRECTORY}")
     PSQL_ADDOPTS="-p ${PGPORT}"
+    GPINITSYSTEM_CONFIG=~/workspace/gpdb/gpAux/gpdemo/clusterConfigFile # FIXME
+    GPINITSYSTEM_HOSTFILE=~/workspace/gpdb/gpAux/gpdemo/hostfile # FIXME
 fi
 
 old_dump=/tmp/pre_upgrade.sql
