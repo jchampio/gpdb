@@ -205,10 +205,10 @@ get_segment_datadirs() {
     # tab.
 
     # First try dumping the 6.0 version...
-    local q="SELECT hostname, datadir FROM gp_segment_configuration WHERE content <> -1"
+    local q="SELECT hostname, datadir FROM gp_segment_configuration WHERE content <> -1 AND role = 'p'"
     if ! dump_old_master_query "$q" 2>/dev/null; then
         # ...and then fall back to pre-6.0.
-        q="SELECT hostname, fselocation FROM gp_segment_configuration JOIN pg_catalog.pg_filespace_entry ON (dbid = fsedbid) WHERE content <> -1"
+        q="SELECT hostname, fselocation FROM gp_segment_configuration JOIN pg_catalog.pg_filespace_entry ON (dbid = fsedbid) WHERE content <> -1 AND role = 'p'"
         dump_old_master_query "$q"
     fi
 }
