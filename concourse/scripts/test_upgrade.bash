@@ -46,6 +46,8 @@ load_old_db_data() {
         psql_opts=
     fi
 
+    psql_opts+=" ${PSQL_ADDOPTS}"
+
     echo 'Loading test database...'
 
     scp "$dumpfile" ${MASTER_HOST}:/tmp/dump.sql.xz
@@ -61,7 +63,7 @@ dump_cluster() {
 
     ssh -n ${MASTER_HOST} "
         source ${NEW_GPHOME}/greenplum_path.sh
-        pg_dumpall -f '$dumpfile'
+        pg_dumpall -f '$dumpfile' ${PSQL_ADDOPTS}
     "
 }
 
@@ -181,7 +183,7 @@ dump_old_master_query() {
     # run on the old master, pre-upgrade.
     ssh -n ${MASTER_HOST} '
         source '"${OLD_GPHOME}"'/greenplum_path.sh
-        psql postgres --quiet --no-align --tuples-only -F"'$'\t''" -c "'$1'"
+        psql postgres '"${PSQL_ADDOPTS}"' --quiet --no-align --tuples-only -F"'$'\t''" -c "'$1'"
     '
 }
 
@@ -236,6 +238,8 @@ apply_sql_fixups() {
         psql_env="PGOPTIONS='--client-min-messages=warning'"
         psql_opts+=" -q"
     fi
+
+    psql_opts+=" ${PSQL_ADDOPTS}"
 
     echo 'Finalizing upgrade...'
 
@@ -309,6 +313,7 @@ if (( $CONCOURSE_MODE )); then
     DATADIR_PREFIX=/data/gpdata
     OLD_MASTER_DATA_DIRECTORY=/data/gpdata/master/gpseg-1
     NEW_MASTER_DATA_DIRECTORY=/data/gpdata/master-new/gpseg-1
+    PSQL_ADDOPTS=
 else
     MASTER_HOST=localhost
     OLD_GPHOME=${GPHOME}
@@ -316,6 +321,7 @@ else
     DATADIR_PREFIX=$(dirname $(dirname ${MASTER_DATA_DIRECTORY})) # FIXME
     OLD_MASTER_DATA_DIRECTORY=${MASTER_DATA_DIRECTORY}
     NEW_MASTER_DATA_DIRECTORY=$(get_new_datadir "${MASTER_DATA_DIRECTORY}")
+    PSQL_ADDOPTS="-p ${PGPORT}"
 fi
 
 old_dump=/tmp/pre_upgrade.sql
