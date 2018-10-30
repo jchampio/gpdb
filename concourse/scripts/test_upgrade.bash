@@ -26,14 +26,6 @@ NEW_MASTER_DATA_DIRECTORY=
 
 DIRNAME=$(dirname "$0")
 
-cat << EOF
-  ############################
-  #                          #
-  #  New GPDB Installation   #
-  #                          #
-  ############################
-EOF
-
 load_old_db_data() {
     # Copy the SQL dump over to the master host and load it into the database.
     local dumpfile=$1
@@ -119,6 +111,14 @@ prep_new_cluster() {
             echo "Number of nodes must be supplied to this script"
             exit 1
         fi
+
+        cat << EOF
+  ############################
+  #                          #
+  #  New GPDB Installation   #
+  #                          #
+  ############################
+EOF
 
         if [ -z "${GPDB_TARBALL_DIR}" ]; then
             GPDB_TARBALL_DIR=gpdb_binary
