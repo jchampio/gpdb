@@ -146,6 +146,9 @@ gpinitsystem_for_upgrade() {
 
         source '"${NEW_GPHOME}"'/greenplum_path.sh
         sed -E -e '\''s|('"${DATADIR_PREFIX}"'/[[:alnum:]_-]+)|\1-new|g'\'' '"${GPINITSYSTEM_CONFIG}"' > gpinitsystem_config_new
+        echo "unset MIRROR_DATA_DIRECTORY" >> gpinitsystem_config_new
+        echo "unset MIRROR_PORT_BASE" >> gpinitsystem_config_new
+        echo "unset MIRROR_REPLICATION_PORT_BASE" >> gpinitsystem_config_new
         # echo "HEAP_CHECKSUM=off" >> gpinitsystem_config_new
         # echo "standard_conforming_strings = off" >> upgrade_addopts
         # echo "escape_string_warning = off" >> upgrade_addopts
