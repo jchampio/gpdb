@@ -158,7 +158,7 @@ class ClosingConnection(pgdb.Connection):
             self._notices.append(notice)
 
         self._impl = connection
-        self._impl.set_notice_receiver(handle_notice)
+        self._impl._cnx.set_notice_receiver(handle_notice)
 
     def __enter__(self):
         return self._impl.__enter__()
