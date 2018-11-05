@@ -305,6 +305,13 @@ class SQLIsolationExecutor(object):
 
                     if isinstance(element, float):
                         value = format(element, "g")
+                    elif isinstance(element, bool):
+                        if element:
+                            value = 't'
+                        else:
+                            value = 'f'
+                    elif element is None:
+                        value = ''
                     else:
                         value = str(element)
                     output.append(value.ljust(column_lengths[idx]))
