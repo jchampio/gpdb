@@ -154,7 +154,7 @@ class SQLIsolationExecutor(object):
                 self.con = self.connectdb(self.dbname)
 
 
-        def null_notice_receiver(notice):
+        def null_notice_receiver(parent_notice,child_notice=None):
             '''
                 Tests ignore notice messages when analyzing results
                 This nul function silently drop notices from the pg.connection
