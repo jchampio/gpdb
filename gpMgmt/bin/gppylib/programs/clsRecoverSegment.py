@@ -639,8 +639,8 @@ class GpRecoverSegmentProgram:
     def trigger_fts_probe(self, gpArray):
         self.logger.info('Triggering FTS probe')
         with dbconn.connect(dbconn.DbURL()) as conn:
-            res = dbconn.execSQL(conn, "SELECT gp_request_fts_probe_scan()")
-        return res.fetchall()
+            res = dbconn.execSQL(conn, "SELECT gp_request_fts_probe_scan()").fetchall()
+        return res
 
     def validate_heap_checksum_consistency(self, gpArray, mirrorBuilder):
         live_segments = [target.getLiveSegment() for target in mirrorBuilder.getMirrorsToBuild()]
