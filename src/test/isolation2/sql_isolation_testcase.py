@@ -153,6 +153,14 @@ class SQLIsolationExecutor(object):
             else:
                 self.con = self.connectdb(self.dbname)
 
+
+        def null_notice_receiver(notice):
+            '''
+                Tests ignore notice messages when analyzing results
+                This nul function silently drop notices from the pg.connection
+            '''
+            return
+
         def connectdb(self, given_dbname, given_host = None, given_port = None, given_opt = None):
             con = None
             retry = 1000
@@ -176,6 +184,7 @@ class SQLIsolationExecutor(object):
                         time.sleep(0.1)
                     else:
                         raise
+            con.set_notice_receiver(self.null_notice_receiver)
             return con
 
         def get_utility_mode_port(self, name):
