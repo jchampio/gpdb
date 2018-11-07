@@ -655,15 +655,14 @@ def impl(context):
 @given('the user runs gpinitstandby with options "{options}"')
 def impl(context, options):
     dbname = 'postgres'
-    with dbconn.connect(dbconn.DbURL(port=os.environ.get("PGPORT"), dbname=dbname)) as conn:
-        query = """select distinct content, hostname from gp_segment_configuration order by content limit 2;"""
-        cursor = dbconn.execSQL(conn, query)
-
     try:
-        _, master_hostname = cursor.fetchone()
-        _, segment_hostname = cursor.fetchone()
-    except:
-        raise Exception("Did not get two rows from query: %s" % query)
+        with dbconn.connect(dbconn.DbURL(port=os.environ.get("PGPORT"), dbname=dbname)) as conn:
+            query = """select distinct content, hostname from gp_segment_configuration order by content limit 2;"""
+            cursor = dbconn.execSQL(conn, query)
+            _, master_hostname = cursor.fetchone()
+            _, segment_hostname = cursor.fetchone()
+    except Exception as e:
+        raise Exception("Query: %s failed to get two rows with error %s" % (query, e.message))
 
     # if we have two hosts, assume we're testing on a multinode cluster
     if master_hostname != segment_hostname:
@@ -2460,11 +2459,11 @@ def step_impl(context, options):
             query = """select datadir, port from pg_catalog.gp_segment_configuration where role='m' and content <> -1;"""
             cursor = dbconn.execSQL(conn, query)
 
-        for i in range(cursor.rowcount):
-            datadir, port = cursor.fetchone()
-            if datadir not in context.stdout_message or \
-                str(port) not in context.stdout_message:
-                    raise Exception("gpstate -m output missing expected mirror info, datadir %s port %d" %(datadir, port))
+            for i in range(cursor.rowcount):
+                datadir, port = cursor.fetchone()
+                if datadir not in context.stdout_message or \
+                    str(port) not in context.stdout_message:
+                        raise Exception("gpstate -m output missing expected mirror info, datadir %s port %d" %(datadir, port))
     else:
         raise Exception("no verification for gpstate option given")
 
