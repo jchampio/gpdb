@@ -817,12 +817,6 @@ def createSegmentRowsFromSegmentList( newHostlist
     return rows
 
 #========================================================================
-def parseTrueFalse(value):
-    if value.lower() == 'f':
-        return False
-    elif value.lower() == 't':
-        return True
-    raise Exception('Invalid true/false value')
 
 # TODO: Destroy this  (MPP-7686)
 #   Now that "hostname" is a distinct field in gp_segment_configuration

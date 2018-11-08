@@ -251,10 +251,12 @@ class GpArrayTestCase(GpTestCase):
             self.assertEquals(expected[i], actual[i])
     
 def convert_bool(val):
-    if val == 't':
-        return True
+    if type(val) is bool:
+        return val
     else:
-        return False   
+        if val == 't':
+            return True
+    return False
 
 #------------------------------- Mainline --------------------------------
 if __name__ == '__main__':
