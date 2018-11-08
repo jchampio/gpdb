@@ -445,7 +445,7 @@ def getGPConfiguration():
           '''
     curs = db.query(qry)
     for row in curs.dictresult():
-        if row['content'] == -1 and row['isprimary'] != 't':
+        if row['content'] == -1 and not row['isprimary']:
             continue  # skip standby master
         cfg[row['dbid']] = row
     db.close()
