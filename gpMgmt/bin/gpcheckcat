@@ -3462,7 +3462,7 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
             # Note that if it was present in exactly half of the segments,
             # we will report it as both missing and extra.
 
-            ids = [int(i) for i in segids[1:-1].split(',')]
+            ids = segids
 
             if len(ids) <= (GV.max_content + 2) / 2:
                 issue = CatMissingIssue(catname, pkeys, segids, 'extra')
@@ -3661,7 +3661,7 @@ class CatInconsistentIssue:
             if segids == '{NULL}':
                 idstr = 'all other segments'
             else:
-                ids = [int(i) for i in segids[1:-1].split(',')]
+                ids =  segids
                 idstr = ''
                 for i in ids:
                     idstr += '%s (%s:%d) ' % \
@@ -3714,7 +3714,7 @@ class CatMissingIssue:
 
     def report(self):
 
-        ids = [int(i) for i in self.segids[1:-1].split(',')]
+        ids = self.segids
         idstr = ''
         if len(ids) == len(GV.report_cfg):
             idstr = 'all segments'
@@ -4222,7 +4222,7 @@ def checkcatReport():
                         for part_table in db.query(partition_leaves_sql).getresult():
                             GV.missing_attr_tables.append( (part_table[0], segids) )
                 for table, segids in sorted(GV.missing_attr_tables):
-                    for id in segids[1:-1].split(','):
+                    for id in segids:
                         myprint("        Table %s.%s.%s" % (GV.dbname, table, id))
                 myprint('')
 
@@ -4236,7 +4236,7 @@ def checkcatReport():
                         for part_table in db.query(partition_leaves_sql).getresult():
                             GV.extra_attr_tables.append( (part_table[0], segids) )
                 for table, segids in sorted(GV.extra_attr_tables):
-                    for id in segids[1:-1].split(','):
+                    for id in segids:
                         myprint("        Table %s.%s.%s" % (GV.dbname, table, id))
                 myprint('')
             myprint('')
