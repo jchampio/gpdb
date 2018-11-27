@@ -1653,7 +1653,7 @@ WHERE
                 schema_oid = row[1]
                 table_oid = row[2]
                 if row[3]:
-                    self.logger.debug("dist policy raw: %s " % row[3].decode('utf-8'))
+                    self.logger.debug("dist policy raw: %s " % [i.decode('utf-8') for i in row[3]])
                 else:
                     self.logger.debug("dist policy raw: NULL")
                 dist_policy = row[3]
