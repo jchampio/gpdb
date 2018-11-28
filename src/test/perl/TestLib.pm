@@ -40,6 +40,12 @@ our @EXPORT = qw(
   command_fails_like
 
   $windows_os
+
+  tempdir
+  start_test_server
+  restart_test_server
+  psql
+  issues_sql_like
 );
 
 our ($windows_os, $tmp_check, $log_path, $test_logfile);
@@ -158,6 +164,69 @@ sub run_log
 {
 	print("# Running: " . join(" ", @{$_[0]}) ."\n");
 	return IPC::Run::run(@_);
+}
+
+# GPDB_95_MERGE_FIXME: 
+# GPDB_96_MERGE_FIXME:
+# Although the majority of this file is backported from 9.6, the following
+# functions (start_test_server, restart_test_server, psql, issues_sql_like) are
+# retained for ease of maintenance of the 9.4-based tests. When merging with
+# 9.5, try to merge in any improvements; when 9.6 is merged, they can go away
+# again.
+my ($test_server_datadir, $test_server_logfile);
+
+sub start_test_server
+{
+	my ($tempdir) = @_;
+	my $ret;
+
+	system_log("initdb -D $tempdir/pgdata -A trust -N >/dev/null");
+	$ret = system_log('pg_ctl', '-D', "$tempdir/pgdata", '-s', '-w', '-l',
+	  "$tempdir/logfile", '-o',
+	  "--fsync=off -k $tempdir --listen-addresses='' --log-statement=all -c gp_role=utility --gp_dbid=-1 --gp_contentid=-1 --logging-collector=off",
+	  'start');
+
+	if ($ret != 0)
+	{
+		system('cat', "$tempdir/logfile");
+		BAIL_OUT("pg_ctl failed");
+	}
+
+	$ENV{PGHOST}         = $tempdir;
+	$ENV{PGOPTIONS}      = '-c gp_session_role=utility';
+	$test_server_datadir = "$tempdir/pgdata";
+	$test_server_logfile = "$tempdir/logfile";
+}
+
+sub restart_test_server
+{
+	system_log('pg_ctl', '-s', '-D', $test_server_datadir, '-w', '-l',
+	  $test_server_logfile, 'restart');
+}
+
+END
+{
+    if ($test_server_datadir)
+    {
+        system_log('pg_ctl', '-D', $test_server_datadir, '-s', '-w', '-m',
+          'immediate', 'stop');
+    }
+}
+
+sub psql
+{
+	my ($dbname, $sql) = @_;
+	run_log([ 'psql', '-X', '-q', '-d', $dbname, '-f', '-' ], '<', \$sql) or die;
+}
+
+sub issues_sql_like
+{
+	my ($cmd, $expected_sql, $test_name) = @_;
+	truncate $test_server_logfile, 0;
+	my $result = run_log($cmd);
+	ok($result, "@$cmd exit code 0");
+	my $log = slurp_file($test_server_logfile);
+	like($log, $expected_sql, "$test_name: SQL found in server log");
 }
 
 # Generate a string made of the given range of ASCII characters
