@@ -3471,10 +3471,7 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
             if len(ids) >= (GV.max_content + 2) / 2:
                 allids = [int(i) for i in range(-1, GV.max_content+1)]
                 diffids = set(allids) - set(ids)
-                # convert the difference set back into a string that looks
-                # like a PostgreSQL array.
-                segids = ",".join(str(x) for x in diffids)
-                segids = "{%s}" % (segids)
+                segids = diffids
                 issue = CatMissingIssue(catname, pkeys, segids, 'missing')
                 gpObj.addMissingIssue(issue)
 
