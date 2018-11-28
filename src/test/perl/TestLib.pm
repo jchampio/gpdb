@@ -156,9 +156,8 @@ sub system_or_bail
 
 sub run_log
 {
-	my $cmd = join(" ", @{ $_[0] });
-	print("# Running: " . $cmd . "\n");
-	return IPC::Run::run($cmd);
+	print("# Running: " . join(" ", @{$_[0]}) ."\n");
+	return IPC::Run::run(@_);
 }
 
 # Generate a string made of the given range of ASCII characters
