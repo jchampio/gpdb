@@ -24,12 +24,18 @@ print HBA "host replication all ::1/128 trust\n";
 close HBA;
 system_or_bail 'pg_ctl', '-s', '-D', "$tempdir/pgdata", 'reload';
 
+# GPDB: The value of max_wal_senders defaults to 1 in GPDB, instead of 0 in Postgres.
+open CONF, ">>$tempdir/pgdata/postgresql.conf";
+print CONF "max_wal_senders = 0\n";
+close CONF;
+restart_test_server;
+
 command_fails(
 	[ 'pg_basebackup', '-D', "$tempdir/backup" ],
 	'pg_basebackup fails because of WAL configuration');
 
 open CONF, ">>$tempdir/pgdata/postgresql.conf";
-print CONF "max_wal_senders = 10\n";
+print CONF "max_wal_senders = 1\n"; # GPDB: Upstream sets this to 10, but GPDB caps the value at 1.
 print CONF "wal_level = archive\n";
 close CONF;
 restart_test_server;

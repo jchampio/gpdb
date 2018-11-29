@@ -14,7 +14,7 @@ open CONF, ">>$tempdir/data/postgresql.conf";
 print CONF "listen_addresses = ''\n";
 print CONF "unix_socket_directories = '$tempdir'\n";
 close CONF;
-command_ok([ 'pg_ctl', 'start', '-D', "$tempdir/data", '-w', '-o', '"-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1"'],
+command_ok([ 'pg_ctl', 'start', '-D', "$tempdir/data", '-w', '-o', '-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1'],
 	'pg_ctl start -w');
 command_ok([ 'pg_ctl', 'start', '-D', "$tempdir/data", '-w' ],
 	'second pg_ctl start succeeds');
