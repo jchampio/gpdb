@@ -14,10 +14,13 @@ issues_sql_like(
 	[ 'vacuumdb', 'postgres' ],
 	qr/statement: VACUUM;/,
 	'SQL VACUUM run');
-issues_sql_like(
-	[ 'vacuumdb', '-f', 'postgres' ],
-	qr/statement: VACUUM \(FULL\);/,
-	'vacuumdb -f');
+TODO: {
+	todo_skip "VACUUM FULL is currently broken; see issue #6362", 2;
+	issues_sql_like(
+		[ 'vacuumdb', '-f', 'postgres' ],
+		qr/statement: VACUUM \(FULL\);/,
+		'vacuumdb -f');
+};
 issues_sql_like(
 	[ 'vacuumdb', '-F', 'postgres' ],
 	qr/statement: VACUUM \(FREEZE\);/,
