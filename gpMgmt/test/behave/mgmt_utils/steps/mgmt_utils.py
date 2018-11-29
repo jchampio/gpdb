@@ -2533,3 +2533,88 @@ def impl(context, database):
     ret_code, std_err, std_out = gpexpand.rollback()
     if ret_code != 0:
         raise Exception("rollback exited with return code: %d.\nstderr=%s\nstdout=%s" % (ret_code, std_err, std_out))
+
+@given('the database "{dbname}" is initialized for orphaned TOAST table tests')
+def impl(context, dbname):
+    drop_database_if_exists(context, dbname)
+    create_database(context, dbname)
+
+    sql = '''
+DROP TABLE IF EXISTS bad_reference;
+CREATE TABLE bad_reference (a text);
+
+
+DROP TABLE IF EXISTS mismatch_fixed;
+CREATE TABLE mismatch_fixed (a text);
+
+DROP TABLE IF EXISTS mismatch_one;
+CREATE TABLE mismatch_one (a text);
+
+DROP TABLE IF EXISTS mismatch_two;
+CREATE TABLE mismatch_two (a text);
+
+DROP TABLE IF EXISTS mismatch_three;
+CREATE TABLE mismatch_three (a text);
+
+
+DROP TABLE IF EXISTS bad_dependency;
+CREATE TABLE bad_dependency (a text);
+
+
+DROP TABLE IF EXISTS double_fault;
+CREATE TABLE double_fault (a text);
+    '''
+    execute_sql(dbname, sql)
+
+@given('the database "{dbname}" is broken with "{broken}" orphaned toast tables only on segments with content IDs "{contentIDs}"')
+def break_orphaned_toast_tables(context, dbname, broken, contentIDs=None):
+    sql = ''
+    if broken == 'bad reference':
+        sql = '''
+UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'bad_reference';'''
+    if broken == 'mismatched non-cyclic':
+        sql = '''-- 1 -> 2 -> 3
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_two') WHERE relname = 'mismatch_one';
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_three') WHERE relname = 'mismatch_two';'''
+    if broken == 'mismatched cyclic':
+        sql = '''-- fixed -> 1 -> 2 -> 3 -> 1
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_one') WHERE relname = 'mismatch_fixed'; -- "save" the reltoastrelid
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_two') WHERE relname = 'mismatch_one';
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_three') WHERE relname = 'mismatch_two';
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_fixed') WHERE relname = 'mismatch_three';'''
+    if broken == "bad dependency":
+        sql = '''
+DELETE FROM pg_depend WHERE refobjid = 'bad_dependency'::regclass;'''
+    if broken == "double fault":
+        sql = '''
+UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'double_fault';
+DELETE FROM pg_depend WHERE refobjid = 'double_fault'::regclass;'''
+
+    dbURLs = [dbconn.DbURL(dbname=dbname)]
+
+    if contentIDs:
+        dbURLs = []
+
+        seg_config_sql = '''SELECT port,hostname FROM gp_segment_configuration WHERE role='p' AND content IN (%s);''' % contentIDs
+        for port, hostname in getRows(dbname, seg_config_sql):
+            dbURLs.append(dbconn.DbURL(dbname=dbname, hostname=hostname, port=port))
+
+    for dbURL in dbURLs:
+        utility = True if contentIDs else False
+        with dbconn.connect(dbURL, allowSystemTableMods=True, utility=utility) as conn:
+            dbconn.execSQL(conn, sql)
+            conn.commit()
+
+@given('the database "{dbname}" is broken with "{broken}" orphaned toast tables')
+def impl(context, dbname, broken):
+    break_orphaned_toast_tables(context, dbname, broken)
+
+@given('in the database "{dbname}" the toast table for "{table}" is renamed')
+def impl(context, dbname, table):
+    # Normally we would connect with allowSystemTableMods=True. We run into a
+    # bug(?) where the allow_system_table_mods GUC isn't forwarded to the
+    # segments. So SET it explicitly inside the SQL session.
+    with dbconn.connect(dbconn.DbURL(dbname=dbname)) as conn:
+        rel_oid = dbconn.execSQLForSingleton(conn, '''SELECT oid FROM pg_class WHERE relname = '%s';''' % table)
+        dbconn.execSQL(conn, '''SET allow_system_table_mods=true; ALTER TABLE pg_toast.pg_toast_%s RENAME TO pg_toast_renamed''' % rel_oid)
+        conn.commit()
