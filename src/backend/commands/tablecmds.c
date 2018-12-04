@@ -8589,6 +8589,15 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 		RemovePartitionEncodingByRelidAttribute(RelationGetRelid(rel), attnum);
 	}
 
+	/* can't drop from only the partition root */
+	if (!recurse && rel_is_partitioned(RelationGetRelid(rel)))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("can't drop a column from only the partition root"),
+				 errhint("Do not specify the ONLY keyword.")));
+	}
+
 	ReleaseSysCache(tuple);
 
 	if (GpPolicyIsPartitioned(rel->rd_cdbpolicy))

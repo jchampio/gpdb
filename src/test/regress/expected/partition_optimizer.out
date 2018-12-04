@@ -8197,3 +8197,35 @@ select oid::regclass, relkind, relstorage, reloptions from pg_class where oid = 
  pt_tab_encode_1_prt_s_xyz | r       | c          | {appendonly=true,orientation=column,compresstype=zlib,compresslevel=1}
 (1 row)
 
+-- Cannot ALTER TABLE ONLY ... DROP COLUMN on a partition root, interior, or
+-- leaves
+create table pt_atonly (a int, b int, c int)
+  distributed by (a)
+  partition by range (a)
+    subpartition by range(c) subpartition template (start(0) end(2) every(1))
+  (start(0) end(5) every(1));
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_1" for table "pt_atonly"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_1_2_prt_1" for table "pt_atonly_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_1_2_prt_2" for table "pt_atonly_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_2" for table "pt_atonly"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_2_2_prt_1" for table "pt_atonly_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_2_2_prt_2" for table "pt_atonly_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_3" for table "pt_atonly"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_3_2_prt_1" for table "pt_atonly_1_prt_3"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_3_2_prt_2" for table "pt_atonly_1_prt_3"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_4" for table "pt_atonly"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_4_2_prt_1" for table "pt_atonly_1_prt_4"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_4_2_prt_2" for table "pt_atonly_1_prt_4"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_5" for table "pt_atonly"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_5_2_prt_1" for table "pt_atonly_1_prt_5"
+NOTICE:  CREATE TABLE will create partition "pt_atonly_1_prt_5_2_prt_2" for table "pt_atonly_1_prt_5"
+alter table only pt_atonly drop column b;
+ERROR:  can't drop a column from only the partition root
+HINT:  Do not specify the ONLY keyword.
+alter table only pt_atonly_1_prt_1 drop column b;
+ERROR:  can't drop a column from "pt_atonly_1_prt_1"; it is part of a partitioned table
+HINT:  You may be able to perform the operation on the partitioned table as a whole.
+alter table only pt_atonly_1_prt_5_2_prt_2 drop column b;
+ERROR:  can't drop a column from "pt_atonly_1_prt_5_2_prt_2"; it is part of a partitioned table
+HINT:  You may be able to perform the operation on the partitioned table as a whole.
+drop table pt_atonly;

@@ -3901,3 +3901,15 @@ select gp_segment_id, attrelid::regclass, attnum, attoptions from gp_dist_random
 
 select oid::regclass, relkind, relstorage, reloptions from pg_class where oid = 'pt_tab_encode_1_prt_s_abc'::regclass;
 select oid::regclass, relkind, relstorage, reloptions from pg_class where oid = 'pt_tab_encode_1_prt_s_xyz'::regclass;
+
+-- Cannot ALTER TABLE ONLY ... DROP COLUMN on a partition root, interior, or
+-- leaves
+create table pt_atonly (a int, b int, c int)
+  distributed by (a)
+  partition by range (a)
+    subpartition by range(c) subpartition template (start(0) end(2) every(1))
+  (start(0) end(5) every(1));
+alter table only pt_atonly drop column b;
+alter table only pt_atonly_1_prt_1 drop column b;
+alter table only pt_atonly_1_prt_5_2_prt_2 drop column b;
+drop table pt_atonly;
