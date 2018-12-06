@@ -4968,6 +4968,39 @@ getFuncs(Archive *fout, int *numFuncs)
 }
 
 /*
+ * Prints a helpful message for a partitioned table that has columns that were
+ * dropped only on the root and not the children, then exits.
+ */
+static void
+print_partial_drop_and_exit(Archive *fout, TableInfo *tbinfo)
+{
+	PGresult	   *res;
+	PQExpBuffer		query = createPQExpBuffer();
+	const char	   *bad_columns;
+
+	appendPQExpBuffer(query,
+					  "SELECT array_to_string(array_agg(DISTINCT att.attname), ', ') "
+					  "FROM pg_partition part "
+					  "JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+					  "JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+					  "                          AND att.attnum > 0 "
+					  "                          AND att.attinhcount = 0) "
+					  "WHERE part.parrelid = '%d'::oid",
+					  tbinfo->dobj.catId.oid);
+
+	res = ExecuteSqlQueryForSingleRow(fout, query->data);
+	bad_columns = PQgetvalue(res, 0, 0);
+
+	exit_horribly(NULL, "table %s is missing column(s) that are present in its partitions: %s\n"
+				  "Data in these columns cannot be dumped; the columns must be "
+				  "either readded or fully dropped.\n",
+				  fmtQualifiedId(fout->remoteVersion,
+								 tbinfo->dobj.namespace->dobj.name,
+								 tbinfo->dobj.name),
+				  bad_columns);
+}
+
+/*
  * getTables
  *	  read all the user-defined tables (no indexes, no catalogs)
  * in the system catalogs return them in the TableInfo* structure
@@ -5011,6 +5044,7 @@ getTables(Archive *fout, int *numTables)
 	int			i_relpages;
 	int			i_parrelid;
 	int			i_parlevel;
+	int			i_parhaspartialdrop;
 
 	/* Make sure we are in proper schema */
 	selectSourceSchema(fout, "pg_catalog");
@@ -5060,7 +5094,8 @@ getTables(Archive *fout, int *numTables)
 						  "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, "
 						  "array_to_string(array(SELECT 'toast.' || x FROM unnest(tc.reloptions) x), ', ') AS toast_reloptions "
 						  ", p.parrelid as parrelid, "
-						  " pl.parlevel as parlevel "
+						  " pl.parlevel as parlevel, "
+						  "(partialdrop.firstdropped IS NOT NULL) AS parhaspartialdrop "
 						  "FROM pg_class c "
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
@@ -5070,7 +5105,17 @@ getTables(Archive *fout, int *numTables)
 					   "LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
 						  "LEFT JOIN pg_partition_rule pr ON c.oid = pr.parchildrelid "
 						  "LEFT JOIN pg_partition p ON pr.paroid = p.oid "
-						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0)"
+						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0) "
+						  /* Any partially dropped columns in partitioned tables? */
+						  "LEFT JOIN ( "
+						  "  SELECT part.parrelid, min(att.attnum) as firstdropped"
+						  "  FROM pg_partition part "
+						  "  JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+						  "  JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+						  "                            AND att.attnum > 0 "
+						  "                            AND att.attinhcount = 0) "
+						  "  GROUP BY part.parrelid "
+						  ") partialdrop ON partialdrop.parrelid = c.oid "
 				   "WHERE c.relkind in ('%c', '%c', '%c', '%c', '%c', '%c') "
 						  "AND c.oid NOT IN (SELECT p.parchildrelid FROM pg_partition_rule p LEFT "
 						  "JOIN pg_exttable e ON p.parchildrelid=e.reloid WHERE e.reloid IS NULL)"
@@ -5106,7 +5151,8 @@ getTables(Archive *fout, int *numTables)
 						  "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, "
 						  "array_to_string(array(SELECT 'toast.' || x FROM unnest(tc.reloptions) x), ', ') AS toast_reloptions "
 						  ", p.parrelid as parrelid, "
-						  " pl.parlevel as parlevel "
+						  " pl.parlevel as parlevel, "
+						  "(partialdrop.firstdropped IS NOT NULL) AS parhaspartialdrop "
 						  "FROM pg_class c "
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
@@ -5116,7 +5162,17 @@ getTables(Archive *fout, int *numTables)
 					   "LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
 						  "LEFT JOIN pg_partition_rule pr ON c.oid = pr.parchildrelid "
 						  "LEFT JOIN pg_partition p ON pr.paroid = p.oid "
-						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0)"
+						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0) "
+						  /* Any partially dropped columns in partitioned tables? */
+						  "LEFT JOIN ( "
+						  "  SELECT part.parrelid, min(att.attnum) as firstdropped"
+						  "  FROM pg_partition part "
+						  "  JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+						  "  JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+						  "                            AND att.attnum > 0 "
+						  "                            AND att.attinhcount = 0) "
+						  "  GROUP BY part.parrelid "
+						  ") partialdrop ON partialdrop.parrelid = c.oid "
 				   "WHERE c.relkind in ('%c', '%c', '%c', '%c', '%c', '%c') "
 						  "AND c.relnamespace <> 7012 " /* BM_BITMAPINDEX_NAMESPACE */
 						  "AND c.oid NOT IN (SELECT p.parchildrelid FROM pg_partition_rule p LEFT "
@@ -5149,7 +5205,8 @@ getTables(Archive *fout, int *numTables)
 						  "d.refobjsubid AS owning_col, "
 						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace) AS reltablespace, "
 						"array_to_string(c.reloptions, ', ') AS reloptions, "
-						  "array_to_string(array(SELECT 'toast.' || x FROM unnest(tc.reloptions) x), ', ') AS toast_reloptions "
+						  "array_to_string(array(SELECT 'toast.' || x FROM unnest(tc.reloptions) x), ', ') AS toast_reloptions, "
+						  "(partialdrop.firstdropped IS NOT NULL) AS parhaspartialdrop "
 						  "FROM pg_class c "
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
@@ -5159,7 +5216,17 @@ getTables(Archive *fout, int *numTables)
 					   "LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
 						  "LEFT JOIN pg_partition_rule pr ON c.oid = pr.parchildrelid "
 						  "LEFT JOIN pg_partition p ON pr.paroid = p.oid "
-						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0)"
+						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0) "
+						  /* Any partially dropped columns in partitioned tables? */
+						  "LEFT JOIN ( "
+						  "  SELECT part.parrelid, min(att.attnum) as firstdropped"
+						  "  FROM pg_partition part "
+						  "  JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+						  "  JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+						  "                            AND att.attnum > 0 "
+						  "                            AND att.attinhcount = 0) "
+						  "  GROUP BY part.parrelid "
+						  ") partialdrop ON partialdrop.parrelid = c.oid "
 				   "WHERE c.relkind in ('%c', '%c', '%c', '%c', '%c', '%c') "
 						  "AND c.relnamespace <> 7012 " /* BM_BITMAPINDEX_NAMESPACE */
 						  "AND c.oid NOT IN (SELECT p.parchildrelid FROM pg_partition_rule p LEFT "
@@ -5194,7 +5261,8 @@ getTables(Archive *fout, int *numTables)
 						"array_to_string(c.reloptions, ', ') AS reloptions, "
 						  "array_to_string(array(SELECT 'toast.' || x FROM unnest(tc.reloptions) x), ', ') AS toast_reloptions "
 						  ", p.parrelid as parrelid, "
-						  " pl.parlevel as parlevel "
+						  " pl.parlevel as parlevel, "
+						  "(partialdrop.firstdropped IS NOT NULL) AS parhaspartialdrop "
 						  "FROM pg_class c "
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
@@ -5204,7 +5272,17 @@ getTables(Archive *fout, int *numTables)
 					   "LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
 						  "LEFT JOIN pg_partition_rule pr ON c.oid = pr.parchildrelid "
 						  "LEFT JOIN pg_partition p ON pr.paroid = p.oid "
-						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0)"
+						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0) "
+						  /* Any partially dropped columns in partitioned tables? */
+						  "LEFT JOIN ( "
+						  "  SELECT part.parrelid, min(att.attnum) as firstdropped"
+						  "  FROM pg_partition part "
+						  "  JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+						  "  JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+						  "                            AND att.attnum > 0 "
+						  "                            AND att.attinhcount = 0) "
+						  "  GROUP BY part.parrelid "
+						  ") partialdrop ON partialdrop.parrelid = c.oid "
 						  "WHERE c.relkind in ('%c', '%c', '%c', '%c') "
 						  "AND c.relnamespace <> 7012 " /* BM_BITMAPINDEX_NAMESPACE */
 						  "AND c.oid NOT IN (SELECT p.parchildrelid FROM pg_partition_rule p LEFT "
@@ -5238,7 +5316,8 @@ getTables(Archive *fout, int *numTables)
 						"array_to_string(c.reloptions, ', ') AS reloptions, "
 						  "array_to_string(array(SELECT 'toast.' || x FROM unnest(tc.reloptions) x), ', ') AS toast_reloptions "
 						  ", p.parrelid as parrelid, "
-						  " pl.parlevel as parlevel "
+						  " pl.parlevel as parlevel, "
+						  "(partialdrop.firstdropped IS NOT NULL) AS parhaspartialdrop "
 						  "FROM pg_class c "
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
@@ -5248,7 +5327,17 @@ getTables(Archive *fout, int *numTables)
 					   "LEFT JOIN pg_class tc ON (c.reltoastrelid = tc.oid) "
 						  "LEFT JOIN pg_partition_rule pr ON c.oid = pr.parchildrelid "
 						  "LEFT JOIN pg_partition p ON pr.paroid = p.oid "
-						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0)"
+						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0) "
+						  /* Any partially dropped columns in partitioned tables? */
+						  "LEFT JOIN ( "
+						  "  SELECT part.parrelid, min(att.attnum) as firstdropped"
+						  "  FROM pg_partition part "
+						  "  JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+						  "  JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+						  "                            AND att.attnum > 0 "
+						  "                            AND att.attinhcount = 0) "
+						  "  GROUP BY part.parrelid "
+						  ") partialdrop ON partialdrop.parrelid = c.oid "
 						  "WHERE c.relkind in ('%c', '%c', '%c', '%c') "
 						  "AND c.relnamespace <> 7012 " /* BM_BITMAPINDEX_NAMESPACE */
 						  "AND c.oid NOT IN (SELECT p.parchildrelid FROM pg_partition_rule p LEFT "
@@ -5282,7 +5371,8 @@ getTables(Archive *fout, int *numTables)
 						"array_to_string(c.reloptions, ', ') AS reloptions, "
 						  "p.parrelid as parrelid, "
 						  "pl.parlevel as parlevel, "
-						  "NULL AS toast_reloptions "
+						  "NULL AS toast_reloptions, "
+						  "(partialdrop.firstdropped IS NOT NULL) AS parhaspartialdrop "
 						  "FROM pg_class c "
 						  "LEFT JOIN pg_depend d ON "
 						  "(c.relkind = '%c' AND "
@@ -5293,6 +5383,15 @@ getTables(Archive *fout, int *numTables)
 						  "LEFT JOIN pg_partition_rule pr ON c.oid = pr.parchildrelid "
 						  "LEFT JOIN pg_partition p ON pr.paroid = p.oid "
 						  "LEFT JOIN pg_partition pl ON (c.oid = pl.parrelid AND pl.parlevel = 0) "
+						  "LEFT JOIN ( "
+						  "  SELECT part.parrelid, min(att.attnum) as firstdropped"
+						  "  FROM pg_partition part "
+						  "  JOIN pg_partition_rule rule ON rule.paroid = part.oid "
+						  "  JOIN pg_attribute att ON (att.attrelid = rule.parchildrelid "
+						  "                            AND att.attnum > 0 "
+						  "                            AND att.attinhcount = 0) "
+						  "  GROUP BY part.parrelid "
+						  ") partialdrop ON partialdrop.parrelid = c.oid "
 						  "WHERE c.relkind in ('%c', '%c', '%c', '%c') %s "
 						  "AND c.relnamespace <> 3012 " /* BM_BITMAPINDEX_NAMESPACE in GPDB 5 and below */
 						  "ORDER BY c.oid",
@@ -5355,6 +5454,7 @@ getTables(Archive *fout, int *numTables)
 	i_reloftype = PQfnumber(res, "reloftype");
 	i_parrelid = PQfnumber(res, "parrelid");
 	i_parlevel = PQfnumber(res, "parlevel");
+	i_parhaspartialdrop = PQfnumber(res, "parhaspartialdrop");
 
 	if (lockWaitTimeout && fout->remoteVersion >= 70300)
 	{
@@ -5475,6 +5575,13 @@ getTables(Archive *fout, int *numTables)
 		if (strlen(tblinfo[i].rolname) == 0)
 			write_msg(NULL, "WARNING: owner of table \"%s\" appears to be invalid\n",
 					  tblinfo[i].dobj.name);
+
+		/*
+		 * GPDB: refuse to dump partition tables with partially dropped columns
+		 * (e.g. ALTER TABLE ONLY [root] DROP COLUMN ...)
+		 */
+		if (tblinfo[i].dobj.dump && (PQgetvalue(res, i, i_parhaspartialdrop)[0] == 't'))
+			print_partial_drop_and_exit(fout, &tblinfo[i]);
 	}
 
 	if (lockWaitTimeout && fout->remoteVersion >= 70300)
