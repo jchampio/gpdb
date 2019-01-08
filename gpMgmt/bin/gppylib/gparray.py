@@ -31,48 +31,14 @@ ROLE_PRIMARY = 'p'
 ROLE_MIRROR  = 'm'
 VALID_ROLES  = [ROLE_PRIMARY, ROLE_MIRROR]
 
-# Map gp_segment_configuration role values to values from gp_primarymirror.
-ROLE_TO_MODE_MAP = {}
-SEG_MODE_PRIMARY = "PrimarySegment"
-SEG_MODE_MIRROR  = "MirrorSegment"
-ROLE_TO_MODE_MAP[ROLE_PRIMARY] = SEG_MODE_PRIMARY
-ROLE_TO_MODE_MAP[ROLE_MIRROR]  = SEG_MODE_MIRROR
-
-
 STATUS_UP    = 'u'
 STATUS_DOWN  = 'd'
 VALID_STATUS = [STATUS_UP, STATUS_DOWN]
 
-MODE_NOT_INITIALIZED = ''               # no mirroring
 MODE_CHANGELOGGING = 'c'                # filerep logging
 MODE_SYNCHRONIZED = 's'                 # filerep synchronized
 MODE_NOT_SYNC = 'n'
 MODE_RESYNCHRONIZATION = 'r'            #
-
-# Map gp_segment_configuration mode values to values retured from gp_primarymirror.
-MODE_TO_DATA_STATE_MAP = {}
-SEG_DATA_STATE_NOT_INITIALIZED    = "NotInitialized"
-SEG_DATA_STATE_IN_CHANGE_TRACKING = "InChangeTracking"
-SEG_DATA_STATE_SYNCHRONIZED       = "InSync"
-SEG_DATA_STATE_IN_RESYNC          = "InResync"
-MODE_TO_DATA_STATE_MAP[MODE_NOT_INITIALIZED]   = SEG_DATA_STATE_NOT_INITIALIZED
-MODE_TO_DATA_STATE_MAP[MODE_CHANGELOGGING]     = SEG_DATA_STATE_IN_CHANGE_TRACKING
-MODE_TO_DATA_STATE_MAP[MODE_SYNCHRONIZED]      = SEG_DATA_STATE_SYNCHRONIZED
-MODE_TO_DATA_STATE_MAP[MODE_RESYNCHRONIZATION] = SEG_DATA_STATE_IN_RESYNC
-
-# SegmentState values returned from gp_primarymirror.
-SEGMENT_STATE_NOT_INITIALIZED               = "NotInitialized"
-SEGMENT_STATE_INITIALIZATION                = "Initialization"
-SEGMENT_STATE_IN_CHANGE_TRACKING_TRANSITION = "InChangeTrackingTransition"
-SEGMENT_STATE_IN_RESYNCTRANSITION           = "InResyncTransition"
-SEGMENT_STATE_IN_SYNC_TRANSITION            = "InSyncTransition"
-SEGMENT_STATE_READY                         = "Ready"
-SEGMENT_STATE_CHANGE_TRACKING_DISABLED      = "ChangeTrackingDisabled"
-SEGMENT_STATE_FAULT                         = "Fault"
-SEGMENT_STATE_SHUTDOWN_BACKENDS             = "ShutdownBackends"
-SEGMENT_STATE_SHUTDOWN                      = "Shutdown"
-SEGMENT_STATE_IMMEDIATE_SHUTDOWN            = "ImmediateShutdown"
-
 
 VALID_MODE = [
     MODE_SYNCHRONIZED,
