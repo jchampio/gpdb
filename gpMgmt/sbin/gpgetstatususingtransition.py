@@ -21,6 +21,37 @@ from gppylib.utils import parseKeyColonValueLines
 
 logger = gplog.get_default_logger()
 
+# Return codes for PQping(), exported by libpq and returned from pg_isready.
+PQPING_OK = 0
+PQPING_REJECT = 1
+PQPING_NO_RESPONSE = 2
+PQPING_NO_ATTEMPT = 3
+PQPING_MIRROR_READY = 64
+
+def _get_segment_status(segment):
+    cmd = base.Command('pg_isready for segment',
+                       "pg_isready -q -h %s -p %d" % (segment.hostname, segment.port))
+    cmd.run()
+
+    rc = cmd.get_return_code()
+
+    if rc == PQPING_OK:
+        if segment.role == gparray.ROLE_PRIMARY:
+            return 'Up'
+        elif segment.role == gparray.ROLE_MIRROR:
+            return 'Identifying as Primary'
+    elif rc == PQPING_REJECT:
+        return 'Rejecting Connections'
+    elif rc == PQPING_NO_RESPONSE:
+        return 'Down'
+    elif rc == PQPING_MIRROR_READY:
+        if segment.role == gparray.ROLE_PRIMARY:
+            return 'Identifying as Mirror'
+        elif segment.role == gparray.ROLE_MIRROR:
+            return 'Up'
+
+    return None
+
 #
 # todo: the file containing this should be renamed since it gets more status than just from transition
 #
@@ -143,9 +174,9 @@ class GpSegStatusProgram:
                         data = data.rstrip()
 
                 elif statusRequest == gp.SEGMENT_STATUS__GET_MIRROR_STATUS:
-#                    data = self.getStatusUsingTransition(seg, statusRequest, pidRunningStatus)
-                    if data is not None:
-                        data = self.__processMirrorStatusOutput(data)
+                    data = _get_segment_status(seg)
+                    if data:
+                        data = { 'databaseStatus': data }
 
                 elif statusRequest == gp.SEGMENT_STATUS__GET_PID:
                     data = self.getPidStatus(seg, pidRunningStatus)
