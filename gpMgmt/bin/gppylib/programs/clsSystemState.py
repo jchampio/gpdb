@@ -893,7 +893,8 @@ class GpSystemStateProgram:
 
         return 1 if hasWarnings else 0
 
-    def _add_replication_info(self, data, segment, peer):
+    @staticmethod
+    def _add_replication_info(data, segment, peer):
         """
         Adds WAL replication information for a segment to GpStateData.
 
