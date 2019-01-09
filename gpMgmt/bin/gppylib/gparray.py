@@ -27,6 +27,11 @@ import os
 
 logger = gplog.get_default_logger()
 
+#
+# Segment state flags. These must correspond to the allowed values for the
+# 'role', 'mode', and 'status' columns in gp_segment_configuration.
+#
+
 ROLE_PRIMARY = 'p'
 ROLE_MIRROR  = 'm'
 VALID_ROLES  = [ROLE_PRIMARY, ROLE_MIRROR]
@@ -35,23 +40,9 @@ STATUS_UP    = 'u'
 STATUS_DOWN  = 'd'
 VALID_STATUS = [STATUS_UP, STATUS_DOWN]
 
-MODE_CHANGELOGGING = 'c'                # filerep logging
-MODE_SYNCHRONIZED = 's'                 # filerep synchronized
-MODE_NOT_SYNC = 'n'
-MODE_RESYNCHRONIZATION = 'r'            #
-
-VALID_MODE = [
-    MODE_SYNCHRONIZED,
-    MODE_NOT_SYNC,
-    MODE_CHANGELOGGING,
-    MODE_RESYNCHRONIZATION,
-]
-MODE_LABELS = {
-    MODE_CHANGELOGGING: "Change Tracking",
-    MODE_SYNCHRONIZED: "Synchronized",
-    MODE_RESYNCHRONIZATION: "Resynchronizing",
-    MODE_NOT_SYNC: "Not In Sync"
-}
+MODE_SYNCHRONIZED = 's'
+MODE_NOT_SYNC     = 'n'
+VALID_MODE = [MODE_SYNCHRONIZED, MODE_NOT_SYNC]
 
 # These are all the valid states primary/mirror pairs can
 # be in.  Any configuration other than this will cause the
@@ -60,18 +51,20 @@ MODE_LABELS = {
 # to the segments current role, not the preferred_role.
 #
 # The format of the tuples are:
-#    (<primary status>, <prmary mode>, <mirror status>, <mirror_mode>)
+#    (<primary status>, <primary mode>, <mirror status>, <mirror mode>)
 VALID_SEGMENT_STATES = [
-    (STATUS_UP, MODE_CHANGELOGGING, STATUS_DOWN, MODE_SYNCHRONIZED),
-    (STATUS_UP, MODE_CHANGELOGGING, STATUS_DOWN, MODE_RESYNCHRONIZATION),
-    (STATUS_UP, MODE_RESYNCHRONIZATION, STATUS_UP, MODE_RESYNCHRONIZATION),
     (STATUS_UP, MODE_SYNCHRONIZED, STATUS_UP, MODE_SYNCHRONIZED),
     (STATUS_UP, MODE_NOT_SYNC, STATUS_UP, MODE_NOT_SYNC),
-    (STATUS_UP, MODE_NOT_SYNC, STATUS_DOWN, MODE_NOT_SYNC)
+    (STATUS_UP, MODE_NOT_SYNC, STATUS_DOWN, MODE_NOT_SYNC),
 ]
 
+_MODE_LABELS = {
+    MODE_SYNCHRONIZED: "Synchronized",
+    MODE_NOT_SYNC:     "Not In Sync",
+}
+
 def getDataModeLabel(mode):
-    return MODE_LABELS[mode]
+    return _MODE_LABELS[mode]
 
 MASTER_CONTENT_ID = -1
 
@@ -303,14 +296,8 @@ class Segment:
     def isSegmentDown(self):
         return self.status == STATUS_DOWN
 
-    def isSegmentModeInChangeLogging(self):
-        return self.mode == MODE_CHANGELOGGING
-
     def isSegmentModeSynchronized(self):
         return self.mode == MODE_SYNCHRONIZED
-
-    def isSegmentModeInResynchronization(self):
-        return self.mode == MODE_RESYNCHRONIZATION
 
     # --------------------------------------------------------------------
     # getters
