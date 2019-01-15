@@ -251,9 +251,21 @@ class SQLIsolationExecutor(object):
                 for col in row:
                     if colno > 0:
                         result += "|"
-                    if col is None:
-                        col = ""
-                    result += " " + str(col).ljust(widths[colno]) + " "
+
+                    # As of PyGreSQL 5, column values are translated into actual
+                    # Python types. Unfortunately for this case, we have to
+                    # convert them back the other way to make gpdiff happy.
+                    if col is True:
+                        value = 't'
+                    elif col is False:
+                        value = 'f'
+                    elif col is None:
+                        value = ''
+                    else:
+                        value = str(col)
+
+                    result += " " + value.ljust(widths[colno]) + " "
+
                     colno = colno + 1
                 result += "\n"
 
