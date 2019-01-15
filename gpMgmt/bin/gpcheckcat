@@ -3471,7 +3471,7 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
             if len(ids) >= (GV.max_content + 2) / 2:
                 allids = [int(i) for i in range(-1, GV.max_content+1)]
                 diffids = set(allids) - set(ids)
-                segids = diffids
+                segids = list(diffids)
                 issue = CatMissingIssue(catname, pkeys, segids, 'missing')
                 gpObj.addMissingIssue(issue)
 
@@ -3945,22 +3945,31 @@ class GPObject:
             type_query = "select (select nspname from pg_namespace where oid=relnamespace) || '.' || relname from pg_class where reltype=%d"
             for issues in self.missingIssues.values() :
                 for issue in issues:
+                    # With the upgrade to PyGreSQL 5, issue.segids is now an
+                    # actual list of integer IDs instead of a string. This is
+                    # good in general, but other parts of the code assume that
+                    # the tuples we're adding to GV.*_attr_tables are hashable,
+                    # and lists aren't hashable. Freeze the list to get around
+                    # this (and consider a TODO to improve the communication
+                    # patterns in this part of the code).
+                    segids = tuple(issue.segids)
+
                     # Get schemaname.tablename corresponding to oid
                     for key in issue.pkeys:
                         if 'relid' in key or key in ['ev_class', 'reloid']:
                             table_list = db.query(oid_query % issue.pkeys[key]).getresult()
                             if table_list:
                                 if issue.type == 'missing':
-                                    GV.missing_attr_tables.append( (table_list[0][0], issue.segids) )
+                                    GV.missing_attr_tables.append( (table_list[0][0], segids) )
                                 else:
-                                    GV.extra_attr_tables.append( (table_list[0][0], issue.segids) )
+                                    GV.extra_attr_tables.append( (table_list[0][0], segids) )
                         elif key == 'oid':
                             table_list = db.query(type_query % issue.pkeys[key]).getresult()
                             if table_list:
                                 if issue.type == 'missing':
-                                    GV.missing_attr_tables.append( (table_list[0][0], issue.segids) )
+                                    GV.missing_attr_tables.append( (table_list[0][0], segids) )
                                 else:
-                                    GV.extra_attr_tables.append( (table_list[0][0], issue.segids) )
+                                    GV.extra_attr_tables.append( (table_list[0][0], segids) )
 
 
     def __cmp__(self, other):
