@@ -320,6 +320,10 @@ def connect(user=None, password=None, host=None, port=None,
                      (database, str(ex).strip()))
         exit(1)
 
+    # After the update to PyGreSQL 5, connections no longer ignore notices by
+    # default. We must ignore them explicitly.
+    db.set_notice_receiver(lambda notice: None)
+
     logger.debug('connected with %s:%s %s' % (host, port, database))
     return db
 
