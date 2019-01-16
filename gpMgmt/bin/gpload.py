@@ -1814,6 +1814,11 @@ class gpload:
                            , user=self.options.U
                            , passwd=self.options.password
                            )
+
+            # After the update to PyGreSQL 5, connections no longer ignore
+            # notices by default. We must ignore them explicitly.
+            self.db.set_notice_receiver(lambda notice: None)
+
             self.log(self.DEBUG, "Successfully connected to database")
         except Exception, e:
             errorMessage = str(e)
