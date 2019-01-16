@@ -36,6 +36,14 @@ except ImportError:
 import platform
 try:
     import pg
+
+    # PYGRESQL_5_FIXME: Set the PyGreSQL 4 compatibility options for queries. To
+    # clear out this fixme, we need to inspect the query results being
+    # inspected/manipulated below, and modify the implementation to match the
+    # new PyGreSQL 5 behavior. Then these compatibility options can be removed.
+    pg.set_bool(False)
+    pg.set_array(False)
+    pg.set_bytea_escaped(True)
 except Exception, e:
     from struct import calcsize
     sysWordSize = calcsize("P") * 8
