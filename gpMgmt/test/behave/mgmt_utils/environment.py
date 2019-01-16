@@ -67,6 +67,13 @@ def before_scenario(context, scenario):
         drop_database_if_exists(context, 'testdb')
 
 def after_scenario(context, scenario):
+    # Close any open connections.
+    # FIXME: this will break @analyzedb and @minirepro because they expect
+    # context.conn to last the entire feature. Fix.
+    if 'conn' in context:
+        context.conn.close()
+        del context.conn
+
     if 'gpexpand' in context.feature.tags \
         or 'gpaddmirrors' in context.feature.tags \
         or 'gpinitstandby' in context.feature.tags:
