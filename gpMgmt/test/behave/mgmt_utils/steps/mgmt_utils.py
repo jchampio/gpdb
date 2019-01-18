@@ -877,6 +877,23 @@ def impl(context):
 @when('user kills all {segment_type} processes')
 @then('user kills all {segment_type} processes')
 def impl(context, segment_type):
+    context.execute_steps(
+        u'given user kills all {} processes with SIGTERM'.format(segment_type)
+    )
+
+@given('user kills all {segment_type} processes with {signal_name}')
+@when('user kills all {segment_type} processes with {signal_name}')
+@then('user kills all {segment_type} processes with {signal_name}')
+def impl(context, segment_type, signal_name):
+    # Look up the signal code by name. This is easier in Python 3, with the
+    # introduction of signal.Signals, but for now we do it the hard way.
+    if (not signal_name.startswith('SIG')) or signal_name.startswith('SIG_'):
+        raise Exception("'{}' is not a valid signal name".format(signal_name))
+    try:
+        signal_code = signal.__dict__[signal_name]
+    except KeyError:
+        raise Exception("'{}' is not a valid signal name".format(signal_name))
+
     gparray = GpArray.initFromCatalog(dbconn.DbURL())
     role = ROLE_PRIMARY if segment_type == 'primary' else ROLE_MIRROR
     filtered_segments = filter(lambda seg: seg.preferred_role == role and seg.content != -1, gparray.getDbList())
@@ -888,8 +905,7 @@ def impl(context, segment_type):
         if pid is None:
             raise Exception('Unable to locate segment "%s" on host "%s"' % (seg_data_dir, seg_host))
 
-        # todo change back to SIGKILL
-        kill_process(int(pid), seg_host, signal.SIGTERM)
+        kill_process(int(pid), seg_host, signal_code)
         _wait_for_process_exit(pid, seg_host)
 
         pid = get_pid_for_segment(seg_data_dir, seg_host)
