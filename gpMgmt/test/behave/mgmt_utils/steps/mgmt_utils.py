@@ -817,9 +817,9 @@ def _process_exists(pid, host):
     cmd.run()
     return cmd.get_return_code() == 0
 
-def _wait_for_process_exit(pid, host, timeout=5):
+def _wait_for_process_exit(pid, host, timeout=30):
     """
-    Waits up to timeout (default 5) seconds for the process with the given PID
+    Waits up to timeout (default 30) seconds for the process with the given PID
     to exit. Returns True if this occurs within the timeout and False otherwise.
 
     Be mindful of the inherent problems with this approach -- if you pass a PID
