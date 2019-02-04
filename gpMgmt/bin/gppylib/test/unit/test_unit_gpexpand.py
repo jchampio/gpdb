@@ -3,7 +3,7 @@ import imp
 
 from gp_unittest import *
 from mock import *
-from gparray import Segment, GpArray
+from gppylib.gparray import Segment, GpArray
 from gppylib.db.dbconn import DbURL
 from gppylib.db import catalog
 from gppylib.gplog import *
