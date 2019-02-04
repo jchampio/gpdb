@@ -103,7 +103,7 @@ EXECNAME = os.path.split(__file__)[-1]
 
 # ----------------------- Command line option parser ----------------------
 
-def parseargs():
+def parseargs(args=None):
     parser = OptParser(option_class=OptChecker,
                        description=' '.join(description.split()),
                        version='%prog version $Revision$')
@@ -148,7 +148,7 @@ def parseargs():
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
 
     # Parse the command line arguments
-    (options, args) = parser.parse_args()
+    (options, args) = parser.parse_args(args)
     return options, args, parser
 
 def validate_options(options, args, parser):
@@ -1813,12 +1813,14 @@ ORDER BY fq_name, tableoid desc;
             self.conn.commit()
 
             cursor.close()
-            self.conn.close()
         except pg.OperationalError:
             pass
         except Exception:
             # schema doesn't exist.  Cancel or error during setup
             pass
+        finally:
+            if self.conn:
+                self.conn.close()
 
     def halt_work(self):
         if self.pool:
