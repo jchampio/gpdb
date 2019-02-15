@@ -3888,8 +3888,8 @@ class CatOrphanToastTableIssue:
         self.segments = segments
 
     def report(self):
-        myprint('    %s' % self.issue.description)
-        myprint('''        On segment(s) %s table '%s' (oid: %s) %s''' % (', '.join(map(str, sorted(self.segments))), self.catname, self.oid, self.issue.cause))
+        myprint('%s' % self.issue.description)
+        myprint('''On segment(s) %s table '%s' (oid: %s) %s''' % (', '.join(map(str, sorted(self.segments))), self.catname, self.oid, self.issue.cause))
 
 # -------------------------------------------------------------------------------
 class GPObject:

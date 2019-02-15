@@ -2534,16 +2534,33 @@ def impl(context, database):
     if ret_code != 0:
         raise Exception("rollback exited with return code: %d.\nstderr=%s\nstdout=%s" % (ret_code, std_err, std_out))
 
-@given('the database "{dbname}" is initialized for orphaned TOAST table tests')
-def impl(context, dbname):
+@given('the database "{dbname}" is broken with "{broken}" orphaned toast tables only on segments with content IDs "{contentIDs}"')
+def break_orphaned_toast_tables(context, dbname, broken, contentIDs=None):
     drop_database_if_exists(context, dbname)
     create_database(context, dbname)
 
-    sql = '''
+    sql = ''
+    if broken == 'bad reference':
+        sql = '''
 DROP TABLE IF EXISTS bad_reference;
 CREATE TABLE bad_reference (a text);
+UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'bad_reference';'''
+    if broken == 'mismatched non-cyclic':
+        sql = '''
+DROP TABLE IF EXISTS mismatch_one;
+CREATE TABLE mismatch_one (a text);
 
+DROP TABLE IF EXISTS mismatch_two;
+CREATE TABLE mismatch_two (a text);
 
+DROP TABLE IF EXISTS mismatch_three;
+CREATE TABLE mismatch_three (a text);
+
+-- 1 -> 2 -> 3
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_two') WHERE relname = 'mismatch_one';
+UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_three') WHERE relname = 'mismatch_two';'''
+    if broken == 'mismatched cyclic':
+        sql = '''
 DROP TABLE IF EXISTS mismatch_fixed;
 CREATE TABLE mismatch_fixed (a text);
 
@@ -2555,40 +2572,67 @@ CREATE TABLE mismatch_two (a text);
 
 DROP TABLE IF EXISTS mismatch_three;
 CREATE TABLE mismatch_three (a text);
-
-
-DROP TABLE IF EXISTS bad_dependency;
-CREATE TABLE bad_dependency (a text);
-
-
-DROP TABLE IF EXISTS double_fault;
-CREATE TABLE double_fault (a text);
-    '''
-    execute_sql(dbname, sql)
-
-@given('the database "{dbname}" is broken with "{broken}" orphaned toast tables only on segments with content IDs "{contentIDs}"')
-def break_orphaned_toast_tables(context, dbname, broken, contentIDs=None):
-    sql = ''
-    if broken == 'bad reference':
-        sql = '''
-UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'bad_reference';'''
-    if broken == 'mismatched non-cyclic':
-        sql = '''-- 1 -> 2 -> 3
-UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_two') WHERE relname = 'mismatch_one';
-UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_three') WHERE relname = 'mismatch_two';'''
-    if broken == 'mismatched cyclic':
-        sql = '''-- fixed -> 1 -> 2 -> 3 -> 1
+        
+-- fixed -> 1 -> 2 -> 3 -> 1
 UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_one') WHERE relname = 'mismatch_fixed'; -- "save" the reltoastrelid
 UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_two') WHERE relname = 'mismatch_one';
 UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_three') WHERE relname = 'mismatch_two';
 UPDATE pg_class SET reltoastrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'mismatch_fixed') WHERE relname = 'mismatch_three';'''
     if broken == "bad dependency":
         sql = '''
+DROP TABLE IF EXISTS bad_dependency;
+CREATE TABLE bad_dependency (a text);
+
 DELETE FROM pg_depend WHERE refobjid = 'bad_dependency'::regclass;'''
-    if broken == "double fault":
+    if broken == "double orphan - no parent":
         sql = '''
-UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'double_fault';
-DELETE FROM pg_depend WHERE refobjid = 'double_fault'::regclass;'''
+DROP TABLE IF EXISTS double_orphan_no_parent;
+CREATE TABLE double_orphan_no_parent (a text);
+
+DELETE FROM pg_depend WHERE refobjid = 'double_orphan_no_parent'::regclass;
+DROP TABLE double_orphan_no_parent;'''
+    if broken == "double orphan - valid parent":
+        sql = '''
+DROP TABLE IF EXISTS double_orphan_valid_parent;
+CREATE TABLE double_orphan_valid_parent (a text);
+
+-- save double_orphan_valid_parent toast table oid
+CREATE TEMP TABLE first_orphan_toast AS
+    SELECT oid, relname FROM pg_class WHERE oid = (SELECT reltoastrelid FROM pg_class WHERE oid = 'double_orphan_valid_parent'::regclass);
+
+-- create a orphan toast table
+DELETE FROM pg_depend WHERE objid = (SELECT oid FROM first_orphan_toast);
+
+DROP TABLE double_orphan_valid_parent;
+
+-- recreate double_orphan_valid_parent table to create a second valid toast table
+CREATE TABLE double_orphan_valid_parent (a text);
+
+-- save the second toast table oid from recreating double_orphan_valid_parent
+CREATE TEMP TABLE second_orphan_toast AS
+    SELECT oid, relname FROM pg_class WHERE oid = (SELECT reltoastrelid FROM pg_class WHERE oid = 'double_orphan_valid_parent'::regclass);
+
+-- swap the first_orphan_toast table with a temp name
+UPDATE pg_class SET relname = (SELECT relname || '_temp' FROM second_orphan_toast)
+    WHERE oid = (SELECT oid FROM first_orphan_toast);
+
+-- swap second_orphan_toast table with the original name of valid_parent toast table
+UPDATE pg_class SET relname = (SELECT relname FROM first_orphan_toast)
+     WHERE oid = (SELECT oid FROM second_orphan_toast);
+
+-- swap the temp name with the first_orphan_toast table
+UPDATE pg_class SET relname = (SELECT relname FROM second_orphan_toast)
+     WHERE oid = (SELECT oid FROM first_orphan_toast);'''
+    if broken == "double orphan - invalid parent":
+        sql = '''
+DROP TABLE IF EXISTS double_orphan_invalid_parent;
+CREATE TABLE double_orphan_invalid_parent (a text);
+
+DELETE FROM pg_depend
+    WHERE objid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'double_orphan_invalid_parent')
+    AND refobjid = (SELECT oid FROM pg_class where relname = 'double_orphan_invalid_parent');
+
+UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'double_orphan_invalid_parent';'''
 
     dbURLs = [dbconn.DbURL(dbname=dbname)]
 
