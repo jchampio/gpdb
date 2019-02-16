@@ -2928,11 +2928,11 @@ def checkOrphanedToastTables():
 
         # log raw orphan toast table query results only to the log file
         log_output = ['Orphan toast tables detected for the following scenarios:']
-        for issue, rows in checker.get_issue_to_rows().iteritems():
+        for issue in checker.get_unique_issues_found():
             log_output.append('\n' + issue.header)
             log_output.append('content_id | toast_table_oid | toast_table_name | expected_table_oid | expected_table_name | dependent_table_oid | dependent_table_name')
             log_output.append('-----------+-----------------+------------------+--------------------+---------------------+---------------------+---------------------')
-            for row in rows:
+            for row in checker.rows_for_issue(issue):
                 log_output.append('{} | {} | {} | {} | {} | {} | {}'.format(
                     row['content_id'],
                     row['toast_table_oid'],
@@ -2952,8 +2952,8 @@ def checkOrphanedToastTables():
         for table in checker.get_orphaned_tables():
             cat_issue_obj = CatOrphanToastTableIssue(table.oid,
                                                      table.catname,
-                                                     checker.get_table_to_issue()[table],
-                                                     checker.get_table_to_segments()[table])
+                                                     checker.issue_for_table(table),
+                                                     checker.segments_for_table(table)
             error_object = getGPObject(table.oid, table.catname)
             error_object.addOrphanToastTableIssue(cat_issue_obj)
 

@@ -16,7 +16,9 @@ class OrphanedToastTablesCheck:
     def __init__(self):
         self.table_to_issue = defaultdict()  # a dictionary of orphan table to issue (header, description, cause)
         self.table_to_segments = defaultdict(list)  # a dictionary of orphan table to affected segments (content_id's)
-        self.issue_to_rows = defaultdict(list)  # a dictionary of issue to individual orphan toast tables
+
+        self.issues = []
+        self.orphaned_tables = set()
 
         # Normally, there's a "loop" between a table and its TOAST table:
         # - The table's reltoastrelid field in pg_class points to its TOAST table
@@ -125,47 +127,42 @@ GROUP BY gp_segment_id, toast_table_oid, toast_table_name, expected_table_oid, e
                 orphan_table = OrphanedTable(row['toast_table_oid'], row['toast_table_name'])
                 issue = DoubleOrphanToastTableIssue(row)
 
-                self.table_to_issue[orphan_table] = issue
-                self.table_to_segments[orphan_table].append(row['content_id'])
-                self.issue_to_rows[DoubleOrphanToastTableIssue()].append(row)
             elif row['expected_table_oid'] is None:
                 orphan_table = OrphanedTable(row['dependent_table_oid'], row['dependent_table_name'])
                 issue = ReferenceOrphanToastTableIssue(row)
 
-                self.table_to_issue[orphan_table] = issue
-                self.table_to_segments[orphan_table].append(row['content_id'])
-                self.issue_to_rows[ReferenceOrphanToastTableIssue()].append(row)
             elif row['dependent_table_oid'] is None:
                 orphan_table = OrphanedTable(row['expected_table_oid'], row['expected_table_name'])
                 issue = DependencyOrphanToastTableIssue(row)
 
-                self.table_to_issue[orphan_table] = issue
-                self.table_to_segments[orphan_table].append(row['content_id'])
-                self.issue_to_rows[DependencyOrphanToastTableIssue()].append(row)
             else:
                 orphan_table = OrphanedTable(row['dependent_table_oid'], row['dependent_table_name'])
                 issue = MismatchOrphanToastTableIssue(row)
 
-                self.table_to_issue[orphan_table] = issue
-                self.table_to_segments[orphan_table].append(row['content_id'])
-                self.issue_to_rows[MismatchOrphanToastTableIssue()].append(row)
+            self.issues.append(issue)
+            self.orphaned_tables.add(orphan_table)
+            self.table_to_segments[orphan_table].append(row['content_id'])
+            self.table_to_issue[orphan_table] = issue
 
         return False
 
-    def get_table_to_issue(self):
-        return self.table_to_issue
+    def issue_for_table(self, table):
+        return self.table_to_issue[table]
 
-    def get_table_to_segments(self):
-        return self.table_to_segments
+    def segments_for_table(self, table):
+        return self.table_to_segments[table]
 
-    def get_issue_to_rows(self):
-        return self.issue_to_rows
+    def rows_for_issue(self, issue_cls):
+        return [ issue.row for issue in self.issues if isinstance(issue, issue_cls) ]
 
     def get_orphaned_tables(self):
-        return self.table_to_issue.keys()
+        return self.orphaned_tables
 
     def get_unique_issues_found(self):
-        return self.issue_to_rows.keys()
+        types = set()
+        for issue in self.issues:
+            types.add(type(issue))
+        return types
 
     def get_fix_text(self):
         log_output = ['\nORPHAN TOAST TABLE FIXES:',
@@ -177,8 +174,8 @@ GROUP BY gp_segment_id, toast_table_oid, toast_table_name, expected_table_oid, e
     def add_repair_statements(self, segments):
         content_id_to_segment_map = self._get_content_id_to_segment_map(segments)
 
-        for issue in self.get_table_to_issue().values():
-            if issue.repair_script is not None:
+        for issue in self.issues:
+            if issue.repair_script:
                 content_id_to_segment_map[issue.row['content_id']]['repair_statements'].append(issue.repair_script)
 
         segments_with_repair_statements = filter(lambda segment: len(segment['repair_statements']) > 0, content_id_to_segment_map.values())

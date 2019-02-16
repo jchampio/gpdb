@@ -20,17 +20,9 @@ class OrphanToastTableIssue(object):
     def __hash__(self):
         return hash(self.__repr__())
 
-    @property
-    def fix_text(self):
-        return []
-
-    @property
-    def header(self):
-        return ''
-
-    @property
-    def description(self):
-        return ''
+    fix_text = []
+    header = ''
+    description = ''
 
     @property
     def repair_script(self):
@@ -74,21 +66,15 @@ class DoubleOrphanToastTableIssue(OrphanToastTableIssue):
 
         OrphanToastTableIssue.__init__(self, cause, row)
 
-    @property
-    def fix_text(self):
-        return [self.header,
-                '''  A manual catalog change is needed to fix. Attempt to determine the original dependent table's OID from the name of the TOAST table.\n''',
-                '''  If the dependent table has a valid OID and exists, the update its pg_class entry with the correct reltoastrelid and adds a pg_depend entry.\n''',
-                '''  If the dependent table doesn't exist, delete the associated TOAST table.\n''',
-                '''  If the dependent table is invalid, the associated TOAST table has been renamed. A manual catalog change is needed.\n''']
-
-    @property
-    def header(self):
-        return 'Double Orphan TOAST tables due to a missing reltoastrelid in pg_class and a missing pg_depend entry.'
-
-    @property
-    def description(self):
-        return 'Found a "double orphan" orphaned TOAST table caused by missing reltoastrelid and missing pg_depend entry.'
+    header = 'Double Orphan TOAST tables due to a missing reltoastrelid in pg_class and a missing pg_depend entry.'
+    fix_text = [
+        header, 
+        '''  A manual catalog change is needed to fix. Attempt to determine the original dependent table's OID from the name of the TOAST table.\n''',
+        '''  If the dependent table has a valid OID and exists, the update its pg_class entry with the correct reltoastrelid and adds a pg_depend entry.\n''',
+        '''  If the dependent table doesn't exist, delete the associated TOAST table.\n''',
+        '''  If the dependent table is invalid, the associated TOAST table has been renamed. A manual catalog change is needed.\n'''
+    ]
+    description = 'Found a "double orphan" orphaned TOAST table caused by missing reltoastrelid and missing pg_depend entry.'
 
     @property
     def repair_script(self):
@@ -106,18 +92,12 @@ class ReferenceOrphanToastTableIssue(OrphanToastTableIssue):
             cause = '''has an orphaned TOAST table '%s' (OID: %s).''' % (row['toast_table_name'], row['toast_table_oid'])
             OrphanToastTableIssue.__init__(self, cause, row)
 
-    @property
-    def fix_text(self):
-        return [self.header,
-                '''  To fix, run the generated repair script which updates a pg_class entry using the correct dependent table OID for reltoastrelid.\n''']
-
-    @property
-    def header(self):
-        return 'Bad Reference Orphaned TOAST tables due to a missing reltoastrelid in pg_class'
-
-    @property
-    def description(self):
-        return 'Found a "bad reference" orphaned TOAST table caused by missing a reltoastrelid in pg_class.'
+    header = 'Bad Reference Orphaned TOAST tables due to a missing reltoastrelid in pg_class'
+    description = 'Found a "bad reference" orphaned TOAST table caused by missing a reltoastrelid in pg_class.'
+    fix_text = [
+        header,
+        '''  To fix, run the generated repair script which updates a pg_class entry using the correct dependent table OID for reltoastrelid.\n'''
+    ]
 
     @property
     def repair_script(self):
@@ -133,18 +113,12 @@ class DependencyOrphanToastTableIssue(OrphanToastTableIssue):
             cause = '''has an orphaned TOAST table '%s' (OID: %s).'''% (row['toast_table_name'], row['toast_table_oid'])
             OrphanToastTableIssue.__init__(self, cause, row)
 
-    @property
-    def fix_text(self):
-        return [self.header,
-                '''  To fix, run the generated repair script which inserts a pg_depend entry using the correct dependent table OID for refobjid.\n''']
-
-    @property
-    def header(self):
-        return 'Bad Dependency Orphaned TOAST tables due to a missing pg_depend entry'
-
-    @property
-    def description(self):
-        return 'Found a "bad dependency" orphaned TOAST table caused by missing a pg_depend entry.'
+    header = 'Bad Dependency Orphaned TOAST tables due to a missing pg_depend entry'
+    description = 'Found a "bad dependency" orphaned TOAST table caused by missing a pg_depend entry.'
+    fix_text = [
+        header,
+        '''  To fix, run the generated repair script which inserts a pg_depend entry using the correct dependent table OID for refobjid.\n'''
+    ]
 
     @property
     def repair_script(self):
@@ -162,18 +136,12 @@ class MismatchOrphanToastTableIssue(OrphanToastTableIssue):
                 row['toast_table_name'], row['toast_table_oid'], row['expected_table_name'], row['expected_table_oid'])
             OrphanToastTableIssue.__init__(self, cause, row)
 
-    @property
-    def fix_text(self):
-        return [self.header,
-                '''  A manual catalog change is needed to fix by updating the pg_depend TOAST table entry and setting the refobjid field to the correct dependent table.\n''']
-
-    @property
-    def header(self):
-        return 'Mismatch Orphaned TOAST tables due to reltoastrelid in pg_class pointing to an incorrect TOAST table'
-
-    @property
-    def description(self):
-        return 'Found a "mismatched" orphaned TOAST table caused by a reltoastrelid in pg_class pointing to an incorrect TOAST table. A manual catalog change is needed.'
+    header = 'Mismatch Orphaned TOAST tables due to reltoastrelid in pg_class pointing to an incorrect TOAST table'
+    description = 'Found a "mismatched" orphaned TOAST table caused by a reltoastrelid in pg_class pointing to an incorrect TOAST table. A manual catalog change is needed.'
+    fix_text = [
+        header,
+        '''  A manual catalog change is needed to fix by updating the pg_depend TOAST table entry and setting the refobjid field to the correct dependent table.\n'''
+    ]
 
     @property
     def repair_script(self):
