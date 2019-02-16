@@ -533,6 +533,7 @@ Feature: gpcheckcat tests
 
     @orphaned_toast
     Scenario: gpcheckcat should repair orphaned toast tables that are only orphaned on the master
+		# TODO: should we just combine this into the test above?
         Given the database "gpcheckcat_orphans" is broken with "bad reference" orphaned toast tables only on segments with content IDs "-1"
         When the user runs "gpcheckcat -R orphaned_toast_tables -g repair_dir gpcheckcat_orphans"
         Then gpcheckcat should return a return code of 1
@@ -542,3 +543,18 @@ Feature: gpcheckcat tests
         And gpcheckcat should print "Found no catalog issue" to stdout
         And the user runs "dropdb gpcheckcat_orphans"
         And the path "repair_dir" is removed from current working directory
+
+	@wip
+    @orphaned_toast
+    Scenario: gpcheckcat should repair tables that are orphaned in different ways per segment
+        Given the database "gpcheckcat_orphans" has a table that is orphaned in multiple ways
+         When the user runs "gpcheckcat -R orphaned_toast_tables -g repair_dir gpcheckcat_orphans"
+         Then gpcheckcat should return a return code of 1
+          And gpcheckcat should print "Found a \"bad reference\" orphaned TOAST table caused by missing a reltoastrelid in pg_class." to stdout
+          And gpcheckcat should print "Found a \"bad dependency\" orphaned TOAST table caused by missing a pg_depend entry." to stdout
+          And gpcheckcat should print "catalog issue\(s\) found , repair script\(s\) generated" to stdout
+          And run all the repair scripts in the dir "repair_dir"
+         When the user runs "gpcheckcat -R orphaned_toast_tables -g repair_dir gpcheckcat_orphans"
+         Then gpcheckcat should print "Found no catalog issue" to stdout
+          And the user runs "dropdb gpcheckcat_orphans"
+          And the path "repair_dir" is removed from current working directory

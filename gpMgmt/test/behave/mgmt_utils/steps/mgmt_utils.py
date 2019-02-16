@@ -2653,6 +2653,38 @@ UPDATE pg_class SET reltoastrelid = 0 WHERE relname = 'double_orphan_invalid_par
 def impl(context, dbname, broken):
     break_orphaned_toast_tables(context, dbname, broken)
 
+@given('the database "{dbname}" has a table that is orphaned in multiple ways')
+def impl(context, dbname):
+    drop_database_if_exists(context, dbname)
+    create_database(context, dbname)
+
+    master = dbconn.DbURL(dbname=dbname)
+    gparray = GpArray.initFromCatalog(master)
+
+    primary0 = gparray.segmentPairs[0].primaryDB
+    primary1 = gparray.segmentPairs[1].primaryDB
+
+    seg0 = dbconn.DbURL(dbname=dbname, hostname=primary0.hostname, port=primary0.port)
+    seg1 = dbconn.DbURL(dbname=dbname, hostname=primary1.hostname, port=primary1.port)
+
+    with dbconn.connect(master, allowSystemTableMods=True) as conn:
+        dbconn.execSQL(conn, """
+            DROP TABLE IF EXISTS borked;
+            CREATE TABLE borked (a text);
+        """)
+
+    with dbconn.connect(seg0, utility=True, allowSystemTableMods=True) as conn:
+        dbconn.execSQL(conn, """
+            DELETE FROM pg_depend WHERE refobjid = 'borked'::regclass;
+        """)
+        conn.commit() # FIXME why do we need this?!
+
+    with dbconn.connect(seg1, utility=True, allowSystemTableMods=True) as conn:
+        dbconn.execSQL(conn, """
+            UPDATE pg_class SET reltoastrelid = 0 WHERE oid = 'borked'::regclass;
+        """)
+        conn.commit()
+
 @given('in the database "{dbname}" the toast table for "{table}" is renamed')
 def impl(context, dbname, table):
     # Normally we would connect with allowSystemTableMods=True. We run into a
