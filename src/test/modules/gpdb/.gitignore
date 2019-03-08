@@ -1,0 +1,2 @@
+# Ignore the temporary check directory in all subdirectories here.
+tmp_check/

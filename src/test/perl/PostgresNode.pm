@@ -150,7 +150,11 @@ sub new
 		_host    => $pghost,
 		_basedir => TestLib::tempdir("data_" . $name),
 		_name    => $name,
-		_logfile => "$TestLib::log_path/${testname}_${name}.log" };
+		_logfile => "$TestLib::log_path/${testname}_${name}.log",
+
+		# GPDB: unless explicitly requested by a GPDB-specific test, disable the
+		# logging collector so the upstream TAP tests work correctly.
+		_enable_logging_collector => 0};
 
 	bless $self, $class;
 	$self->dump_info;
@@ -648,10 +652,12 @@ sub start
 	my $port   = $self->port;
 	my $pgdata = $self->data_dir;
 	my $name   = $self->name;
+	my $collector = $self->{_enable_logging_collector} ? 'on' : 'off';
 	BAIL_OUT("node \"$name\" is already running") if defined $self->{_pid};
 	print("### Starting node \"$name\"\n");
 	my $ret = TestLib::system_log('pg_ctl', '-w', '-D', $self->data_dir, '-l',
-		$self->logfile, '-o', "-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1 --logging-collector=off",
+		$self->logfile,
+		'-o', "-c gp_role=utility --gp_dbid=-1 --gp_contentid=-1 --logging-collector=$collector",
 		'start');
 
 	if ($ret != 0)

@@ -6,4 +6,6 @@ include $(top_builddir)/src/Makefile.global
 
 SUBDIRS = test_planner
 
+SUBDIRS += gpdb
+
 $(recurse)
