@@ -581,8 +581,8 @@ class GpMirrorListToBuild:
                                                           suppressErrorCheck=False,
                                                           progressCmds=progressCmds)
 
-        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(removeCmds, "removing pg_basebackup progres logfiles",
-                                                          suppressErrorCheck=False)
+        #self.__runWaitAndCheckWorkerPoolForErrorsAndClear(removeCmds, "removing pg_basebackup progres logfiles",
+        #                                                  suppressErrorCheck=False)
 
         #
         # copy dump files from old segment to new segment
