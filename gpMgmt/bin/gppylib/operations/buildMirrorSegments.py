@@ -562,8 +562,7 @@ class GpMirrorListToBuild:
             for segment in destSegmentByHost[hostName]:
                 progressCmds.append(
                     GpMirrorListToBuild.ProgressCommand("tail the last line of the file",
-                                       "set -o pipefail; touch -a {0}; tail -1 {0} | tr '\\r' '\\n' | tail -1".format(
-                                           pipes.quote(segment.progressFile)),
+                                       "echo progress",
                                        segment.getSegmentDbId(),
                                        segment.progressFile,
                                        ctxt=base.REMOTE,
