@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+WITH_PYTHON=1
+
+# --no-python must be the first argument, if provided.
+if [ "$1" = "--no-python" ]; then
+    WITH_PYTHON=0
+    shift
+fi
+
 if [ x$1 != x ] ; then
     GPHOME_PATH=$1
 else
@@ -40,7 +48,8 @@ if [ -h \${GPHOME}/../greenplum-db ]; then
 fi
 EOF
 
-cat <<EOF
+if (( $WITH_PYTHON )); then
+    cat <<EOF
 #setup PYTHONHOME
 if [ -x \$GPHOME/ext/python/bin/python ]; then
     PYTHONHOME="\$GPHOME/ext/python"
@@ -48,22 +57,25 @@ if [ -x \$GPHOME/ext/python/bin/python ]; then
 fi
 EOF
 
-#setup PYTHONPATH
-if [ "x${PYTHONPATH}" == "x" ]; then
-    PYTHONPATH="\$GPHOME/lib/python"
-else
-    PYTHONPATH="\$GPHOME/lib/python:${PYTHONPATH}"
-fi
-cat <<EOF
+    #setup PYTHONPATH
+    if [ "x${PYTHONPATH}" == "x" ]; then
+        PYTHONPATH="\$GPHOME/lib/python"
+    else
+        PYTHONPATH="\$GPHOME/lib/python:${PYTHONPATH}"
+    fi
+    cat <<EOF
 PYTHONPATH=${PYTHONPATH}
 EOF
+fi
 
 GP_BIN_PATH=\$GPHOME/bin
 GP_LIB_PATH=\$GPHOME/lib
 
-if [ -n "$PYTHONHOME" ]; then
-    GP_BIN_PATH=${GP_BIN_PATH}:\$PYTHONHOME/bin
-    GP_LIB_PATH=${GP_LIB_PATH}:\$PYTHONHOME/lib
+if (( $WITH_PYTHON )); then
+    if [ -n "$PYTHONHOME" ]; then
+        GP_BIN_PATH=${GP_BIN_PATH}:\$PYTHONHOME/bin
+        GP_LIB_PATH=${GP_LIB_PATH}:\$PYTHONHOME/lib
+    fi
 fi
 cat <<EOF
 PATH=${GP_BIN_PATH}:\$PATH
@@ -76,14 +88,16 @@ EOF
 
 # AIX uses yet another library path variable
 # Also, Python on AIX requires special copies of some libraries.  Hence, lib/pware.
-if [ "${PLAT}" = "AIX" ]; then
-cat <<EOF
+if (( $WITH_PYTHON )); then
+    if [ "${PLAT}" = "AIX" ]; then
+        cat <<EOF
 PYTHONPATH=\${GPHOME}/ext/python/lib/python2.7:\${PYTHONPATH}
 LIBPATH=\${GPHOME}/lib/pware:\${GPHOME}/lib:\${GPHOME}/ext/python/lib:/usr/lib/threads:\${LIBPATH}
 export LIBPATH
 GP_LIBPATH_FOR_PYTHON=\${GPHOME}/lib/pware
 export GP_LIBPATH_FOR_PYTHON
 EOF
+    fi
 fi
 
 # openssl configuration file path
@@ -99,7 +113,9 @@ export GPHOME
 export PATH
 EOF
 
-cat <<EOF
+if (( $WITH_PYTHON )); then
+    cat <<EOF
 export PYTHONPATH
 EOF
+fi
 

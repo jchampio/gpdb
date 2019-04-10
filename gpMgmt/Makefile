@@ -54,7 +54,8 @@ set_scripts_version :
 generate_greenplum_path_file:
 	mkdir -p $(DESTDIR)$(prefix)
 	unset LIBPATH; \
-	bin/generate-greenplum-path.sh $(prefix) > $(DESTDIR)$(prefix)/greenplum_path.sh
+	bin/generate-greenplum-path.sh --no-python $(prefix) > $(DESTDIR)$(prefix)/greenplum_path.sh
+	bin/generate-greenplum-path.sh $(prefix) > $(DESTDIR)$(prefix)/python_greenplum_path.sh
 
 install: generate_greenplum_path_file
 	# Generate some python libraries
