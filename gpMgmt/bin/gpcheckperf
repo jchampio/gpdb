@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 """
 gpcheckperf -- Check the hardware for Greenplum Database
 

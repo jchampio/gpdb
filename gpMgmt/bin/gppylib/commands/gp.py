@@ -1270,7 +1270,7 @@ def start_standbymaster(host, datadir, port, era=None,
 
     logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
     cmd = Command("recovery_startup",
-                  ("python -c "
+                  ("gp-python-selector -c "
                    "'from gppylib.commands.gp import recovery_startup; "
                    """recovery_startup("{0}", "{1}")'""").format(
                        datadir, port),
@@ -1304,7 +1304,7 @@ def start_standbymaster(host, datadir, port, era=None,
         # shell script.
         pid = getPostmasterPID(host, datadir)
         cmd = Command("get pids",
-                      ("python -c "
+                      ("gp-python-selector -c "
                        "'from gppylib.commands import unix; "
                        "print unix.getDescendentProcesses({0})'".format(pid)),
                       ctxt=REMOTE, remoteHost=host)
@@ -1502,7 +1502,7 @@ def get_local_db_mode(master_data_dir):
 ######
 def read_postmaster_pidfile(datadir, host=None):
     if host:
-        cmdStr ="""python -c 'from {module} import {func}; print {func}("{args}")'""".format(module=sys.modules[__name__].__name__,
+        cmdStr ="""gp-python-selector -c 'from {module} import {func}; print {func}("{args}")'""".format(module=sys.modules[__name__].__name__,
                                                                                              func='read_postmaster_pidfile',
                                                                                              args=datadir)
         cmd = Command(name='run this method remotely', cmdStr=cmdStr, ctxt=REMOTE, remoteHost=host)

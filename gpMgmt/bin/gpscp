@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 
 '''
 gpscp -- scp to multiple hosts at once

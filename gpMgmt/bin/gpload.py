@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 # -*- coding: utf-8 -*-
 # gpload - load file(s) into Greenplum Database
 # Copyright Greenplum 2008

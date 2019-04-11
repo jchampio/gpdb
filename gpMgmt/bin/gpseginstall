@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 '''
 USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER] [-g|--group GROUP] [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS] [--verbose]
          where HOSTFILE lists all the hosts to install the software on

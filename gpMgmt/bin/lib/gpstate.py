@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 #
 # Recovers Greenplum segment instances that are marked as invalid, if
 # mirroring is configured and operational

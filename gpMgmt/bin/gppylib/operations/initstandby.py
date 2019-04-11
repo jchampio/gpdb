@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env gp-python-selector
 
 import os
 import base64

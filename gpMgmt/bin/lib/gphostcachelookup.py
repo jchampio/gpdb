@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 '''
 gphostcachelookup.py -- look up the hostname for a list of interfaces
 

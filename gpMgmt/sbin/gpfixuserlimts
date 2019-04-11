@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env gp-python-selector
 ''' 
 USAGE:  gpfixuserlimts -f|--file FILE -u|--user USER
         where FILE is the file to be modified
