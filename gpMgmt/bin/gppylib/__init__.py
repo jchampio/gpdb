@@ -20,7 +20,10 @@ def _sanitize_pythonpath():
 
     if paths[0] == hack_path:
         paths = paths[1:]
-        # FIXME: if PYTHONPATH was unset to start with, we need to unset it here
-        os.environ['PYTHONPATH'] = os.pathsep.join(paths)
+        if paths:
+            os.environ['PYTHONPATH'] = os.pathsep.join(paths)
+        else:
+            # PYTHONPATH wasn't set to begin with, so unset it now.
+            del os.environ['PYTHONPATH']
 
 _sanitize_pythonpath()
