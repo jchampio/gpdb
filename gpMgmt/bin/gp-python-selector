@@ -1,5 +1,12 @@
 #! /bin/bash
 
+# If a Python is installed in GPHOME, use that; otherwise fall back to the
+# system Python.
+PYTHON="$GPHOME/ext/python/bin/python"
+if [ ! -x "$PYTHON" ]; then
+    PYTHON=python
+fi
+
 # Add our shipped Python modules to the PYTHONPATH; this will be undone by
 # gppylib so that this environment doesn't pollute child processes.
 if [ -n "${PYTHONPATH+set}" ]; then
@@ -11,4 +18,4 @@ else
     export PYTHONPATH="$GPHOME/lib/python"
 fi
 
-python "$@"
+"${PYTHON}" "$@"

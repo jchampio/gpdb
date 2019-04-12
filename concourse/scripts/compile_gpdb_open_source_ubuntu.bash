@@ -58,7 +58,7 @@ function export_gpdb() {
   TARBALL="$TRANSFER_DIR_ABSOLUTE_PATH"/$COMPILED_BITS_FILENAME
   pushd $GREENPLUM_INSTALL_DIR
     source greenplum_path.sh
-    python -m compileall -q -x test .
+    gp-python-selector -m compileall -q -x test .
     chmod -R 755 .
     tar -czf ${TARBALL} ./*
   popd
