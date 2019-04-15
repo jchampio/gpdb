@@ -5,6 +5,14 @@
 PYTHON="$GPHOME/ext/python/bin/python"
 if [ ! -x "$PYTHON" ]; then
     PYTHON=python
+else
+    # FIXME: the vendored Python isn't correctly compiled with an rpath, so we
+    # have to manually fix up the LD_LIBRARY_PATH here.
+    if [ -n "${PYTHONPATH+set}" ]; then
+        export LD_LIBRARY_PATH="$GPHOME/ext/python/lib:${LD_LIBRARY_PATH}"
+    else
+        export LD_LIBRARY_PATH="$GPHOME/ext/python/lib"
+    fi
 fi
 
 # Add our shipped Python modules to the PYTHONPATH; this will be undone by
