@@ -103,6 +103,7 @@ groups:
                     MM_2_suites %}
   - MM_[[ test_name ]]
 {% endfor %}
+  - MM_gpstart
   - MM_gppkg
   - MM_gpcheck
   - MM_gpexpand
@@ -246,6 +247,7 @@ groups:
                     MM_2_suites %}
   - MM_[[ test_name ]]
 {% endfor %}
+  - MM_gpstart
   - MM_gppkg
   - MM_gpcheck
   - MM_gpexpand
@@ -2579,6 +2581,15 @@ jobs:
       BEHAVE_TAGS: [[ test_name ]]
 
 {% endfor %}
+- name: MM_gpstart
+  plan:
+  - aggregate: *gets_for_behave
+  - task: gpstart
+    file: gpdb_src/concourse/tasks/behave_gpdb.yml
+    image: centos-gpdb-dev-6
+    params:
+      BEHAVE_FLAGS: --tags=gpstart --tags=~dca
+
 - name: MM_pt-rebuild
   plan:
   - aggregate: *gets_for_behave
@@ -2657,6 +2668,7 @@ jobs:
                     MM_2_suites %}
       - MM_[[ test_name ]]
 {% endfor %}
+      - MM_gpstart
       - MM_gppkg
       - MM_gpcheck
       - MM_gpexpand
@@ -3825,6 +3837,7 @@ jobs:
       - DPM_backup-restore
       - MM_gppkg
       - MM_pt-rebuild
+      - MM_gpstart
       - fts
       - storage
 {% for test_name in cs_walrep_suites +
