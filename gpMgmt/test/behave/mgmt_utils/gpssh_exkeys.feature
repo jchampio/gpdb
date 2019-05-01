@@ -101,4 +101,15 @@ Feature: gpssh behave tests
          When gpssh-exkeys is run successfully with a hostfile
          Then all hosts "can" reach each other or themselves automatically
 
+    @wip
+    @concourse_cluster
+    Scenario: IPv6 addresses are accepted
+        Given the gpssh_exkeys master host is set to "mdw"
+          And the gpssh_exkeys segment host is set to "sdw1,sdw2,sdw3"
+          And all SSH configurations are backed up and removed
+          And the segments can only be accessed using the master key
+          And there is no duplication in the "authorized_keys" files
+         Then all hosts "cannot" reach each other or themselves automatically
 
+         When gpssh-exkeys is run successfully with IPv6 addresses
+         Then all hosts "can" reach each other or themselves automatically

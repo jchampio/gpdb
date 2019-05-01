@@ -1,7 +1,9 @@
 from os import path
 import os
 import shutil
+import socket
 import subprocess
+import sys
 import tempfile
 
 import pipes
@@ -110,6 +112,29 @@ def impl(context):
             '-v',
             '-f', host_file.name,
         ])
+
+@when('gpssh-exkeys is run successfully with IPv6 addresses')
+def impl(context):
+    ipv6_addrs = []
+    for host in context.gpssh_exkeys_context.allHosts():
+        # Try to look up an IPv6 address for each host.
+        try:
+            addrs = socket.getaddrinfo(host, None, socket.AF_INET6)
+        except socket.gaierror as err:
+            raise Exception, \
+                "failed to find IPv6 address for host '{}': {}".format(host, err), \
+                sys.exc_info()[2]
+
+        # getaddrinfo() return value is a bit opaque. For AF_INET6, it's a list
+        # of (family, socktype, proto, canonname, (address, port, flow info, scope id))
+        # nested tuples. We're interested in the address piece of the first
+        # entry in that list.
+        addr = addrs[0][4][0]
+        print host, "maps to", addr
+
+        ipv6_addrs.append(addr)
+
+    run_exkeys(ipv6_addrs)
 
 @when('gpssh-exkeys is run eok')
 def impl(context):
