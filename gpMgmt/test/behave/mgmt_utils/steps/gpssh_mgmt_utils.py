@@ -26,7 +26,7 @@ class GpsshExkeysMgmtContext:
         self.segment_hosts = None
         self.private_key_file_from = None
         self.private_key_file_to = None
-        make_temp_dir(context, '/tmp/gpssh_exkeys', '0700')
+        make_temp_dir(context, '/tmp/gpssh-exkeys', '0700')
         self.working_directory = context.temp_base_dir
 
     def inputsSetup(self):
@@ -38,11 +38,11 @@ class GpsshExkeysMgmtContext:
         return allHosts
 
 
-@given('the gpssh_exkeys master host is set to "{host}"')
+@given('the gpssh-exkeys master host is set to "{host}"')
 def impl(context, host):
     context.gpssh_exkeys_context.master_host = host
 
-@given('the gpssh_exkeys segment host is set to "{hosts}"')
+@given('the gpssh-exkeys segment host is set to "{hosts}"')
 def impl(context, hosts):
     context.gpssh_exkeys_context.segment_hosts = hosts.split(',')
 

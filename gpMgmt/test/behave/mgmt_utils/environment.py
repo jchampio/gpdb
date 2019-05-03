@@ -16,7 +16,7 @@ def before_all(context):
 
 def before_feature(context, feature):
     # we should be able to run gpexpand without having a cluster initialized
-    tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors', 'gpssh_exkeys']
+    tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors', 'gpssh-exkeys']
     if set(context.feature.tags).intersection(tags_to_skip):
         return
 
@@ -76,10 +76,10 @@ def before_scenario(context, scenario):
     if 'gpmovemirrors' in context.feature.tags:
         context.mirror_context = MirrorMgmtContext()
 
-    if 'gpssh_exkeys' in context.feature.tags:
+    if 'gpssh-exkeys' in context.feature.tags:
         context.gpssh_exkeys_context = GpsshExkeysMgmtContext(context)
 
-    tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors', 'gpssh_exkeys']
+    tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors', 'gpssh-exkeys']
     if set(context.feature.tags).intersection(tags_to_skip):
         return
 
@@ -102,18 +102,18 @@ def after_scenario(context, scenario):
     if set(context.feature.tags).intersection(tags_to_skip):
         return
 
-    if 'gpssh_exkeys' in context.feature.tags:
+    if 'gpssh-exkeys' in context.feature.tags:
         file_from = context.gpssh_exkeys_context.private_key_file_from
         file_to = context.gpssh_exkeys_context.private_key_file_to
         if file_from and file_to:
             shutil.move(file_from, file_to)
 
-    tags_to_cleanup = ['gpmovemirrors', 'gpssh_exkeys']
+    tags_to_cleanup = ['gpmovemirrors', 'gpssh-exkeys']
     if set(context.feature.tags).intersection(tags_to_cleanup):
         if 'temp_base_dir' in context:
             shutil.rmtree(context.temp_base_dir)
 
-    tags_to_not_restart_db = ['analyzedb', 'gpssh_exkeys']
+    tags_to_not_restart_db = ['analyzedb', 'gpssh-exkeys']
     if not set(context.feature.tags).intersection(tags_to_not_restart_db):
         start_database_if_not_started(context)
 
