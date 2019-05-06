@@ -40,15 +40,46 @@ def impl(context, host):
 def impl(context, hosts):
     context.gpssh_exkeys_context.segment_hosts = hosts.split(',')
 
-def run_exkeys(hosts):
+def run_exkeys(hosts, capture=False):
+    """
+    Runs gpssh-exkeys for the given list of hosts. If capture is True, the
+    (returncode, stdout, stderr) from the gpssh-exkeys run is returned;
+    otherwise an exception is thrown on failure and all stdout/err is untouched.
+    """
     host_opts = []
     for host in hosts:
         host_opts.extend(['-h', host])
 
-    subprocess.check_call([
-        'gpssh-exkeys',
-        '-v',
-    ] + host_opts)
+    args = [ 'gpssh-exkeys', '-v' ] + host_opts
+
+    if not capture:
+        subprocess.check_call(args)
+        return
+
+    # Capture stdout/err for later use.
+    # TODO: instead of suppressing stdout/err, tee it somehow so that we still
+    # get the standard Behave capture mechanism.
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+
+    return p.returncode, stdout, stderr
+
+@then('gpssh-exkeys writes "{output}" to stderr')
+def impl(context, output):
+    if 'stderr' not in context:
+        raise Exception('context has no stored stderr (did you run the correct steps?)')
+
+    if output not in context.stderr:
+        msg = 'expected stderr content not found. stderr:\n%s' % context.stderr
+        raise Exception(msg)
+
+@when('gpssh-exkeys is run')
+def impl(context):
+    hosts = context.gpssh_exkeys_context.allHosts()
+    code, stdout, stderr = run_exkeys(hosts, capture=True)
+    context.ret_code = code
+    context.stdout = stdout
+    context.stderr = stderr
 
 @when('gpssh-exkeys is run successfully')
 def impl(context):
@@ -178,8 +209,12 @@ def impl(context, works):
         raise Exception('actual result of ssh mdw: %s (expected: %s)', result, expected_code)
 
 
-@given('all SSH configurations are backed up and removed')
+@given('all SSH configurations are backed up and stripped')
 def impl(context):
+    """
+    Strips out part of the ssh secrets to setup the cluster so only ssh from
+    the local to the remotes works.
+    """
     host_opts = []
     for host in context.gpssh_exkeys_context.segment_hosts:
         host_opts.extend(['-h', host])
@@ -216,6 +251,25 @@ def impl(context):
 
     context.add_cleanup(cleanup)
 
+@given('the local SSH configuration is backed up and removed')
+def impl(context):
+    """
+    Strips out part of the ssh secrets to setup the cluster so only ssh from
+    the local to the remotes works.
+    """
+    # Also backup .ssh on mdw, leaving the key configuration in .ssh
+    home_ssh = path.expanduser('~/.ssh')
+    backup_path = tempfile.mkdtemp()
+    for ssh_file in os.listdir(home_ssh):
+        shutil.move(path.join(home_ssh, ssh_file), backup_path)
+
+    # Make sure the configuration is restored at the end.
+    def cleanup():
+        for f in os.listdir(backup_path):
+            shutil.move(path.join(backup_path, f), path.join(home_ssh, f))
+        os.rmdir(backup_path)
+
+    context.add_cleanup(cleanup)
 
 @given('the segments can only be accessed using the master key')
 def impl(context):

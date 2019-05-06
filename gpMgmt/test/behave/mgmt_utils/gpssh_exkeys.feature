@@ -1,11 +1,22 @@
 @gpssh-exkeys
 Feature: gpssh behave tests
 
+    @wip
+    @concourse_cluster
+    Scenario: fail sensibly if 1-N is not in place
+        Given the gpssh-exkeys master host is set to "mdw"
+          And the gpssh-exkeys segment host is set to "sdw1,sdw2,sdw3"
+          And the local SSH configuration is backed up and removed
+         When gpssh-exkeys is run
+         Then gpssh-exkeys should return a return code of 1
+          And gpssh-exkeys writes "[ERROR]: 1-N is not set up from local to host" to stderr
+
+
     @concourse_cluster
     Scenario: N-to-N exchange works
         Given the gpssh-exkeys master host is set to "mdw"
           And the gpssh-exkeys segment host is set to "sdw1,sdw2,sdw3"
-          And all SSH configurations are backed up and removed
+          And all SSH configurations are backed up and stripped
           And the segments can only be accessed using the master key
           And there is no duplication in the "authorized_keys" files
          Then all hosts "cannot" reach each other or themselves automatically
@@ -22,7 +33,7 @@ Feature: gpssh behave tests
     Scenario: additional hosts may be added after initial run
         Given the gpssh-exkeys master host is set to "mdw"
           And the gpssh-exkeys segment host is set to "sdw1,sdw2,sdw3"
-          And all SSH configurations are backed up and removed
+          And all SSH configurations are backed up and stripped
           And the segments can only be accessed using the master key
           And there is no duplication in the "authorized_keys" files
          Then all hosts "cannot" reach each other or themselves automatically
@@ -37,7 +48,7 @@ Feature: gpssh behave tests
     Scenario: hostfiles are accepted as well
         Given the gpssh-exkeys master host is set to "mdw"
           And the gpssh-exkeys segment host is set to "sdw1,sdw2,sdw3"
-          And all SSH configurations are backed up and removed
+          And all SSH configurations are backed up and stripped
           And the segments can only be accessed using the master key
           And there is no duplication in the "authorized_keys" files
          Then all hosts "cannot" reach each other or themselves automatically
@@ -50,7 +61,7 @@ Feature: gpssh behave tests
     Scenario: IPv6 addresses are accepted
         Given the gpssh-exkeys master host is set to "mdw"
           And the gpssh-exkeys segment host is set to "sdw1,sdw2,sdw3"
-          And all SSH configurations are backed up and removed
+          And all SSH configurations are backed up and stripped
           And the segments can only be accessed using the master key
           And there is no duplication in the "authorized_keys" files
          Then all hosts "cannot" reach each other or themselves automatically
