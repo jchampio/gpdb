@@ -118,63 +118,8 @@ class Host:
     def host(self):
         return self.m_host
 
-    def remoteID(self):
-        return self.m_remoteID
-
-    def popen_cmd(self):
-        return self.m_popen_cmd;
-
     def isPclosed(self):
         return self.m_popen is None;
-
-    def getAddrs(self):
-        '''
-        Gets the INET and INET6 addresses for this host.
-        '''
-        if (self.m_inetAddrs is None) and (self.m_inet6Addrs is None):
-            self.m_inetAddrs = []
-            self.m_inet6Addrs = []
-            try:
-                hostAddrs = socket.getaddrinfo(self.m_host, 0, socket.AF_UNSPEC, socket.SOCK_STREAM, socket.IPPROTO_TCP,
-                                               0)
-
-                if self.m_isLocalhost:
-                    try:
-                        hostAddrs.extend(
-                            socket.getaddrinfo('localhost', 0, socket.AF_UNSPEC, socket.SOCK_STREAM, socket.IPPROTO_TCP,
-                                               0))
-                    except:
-                        pass
-
-                for (family, socktype, proto, canonname, sockaddr) in hostAddrs:
-                    if family == socket.AF_INET:
-                        (addr, port) = sockaddr
-                        self.m_inetAddrs.append(addr)
-                    elif family == socket.AF_INET6:
-                        (addr, port, flowinfo, scopeid) = sockaddr
-                        self.m_inet6Addrs.append(addr)
-            except socket.gaierror:
-                pass
-            self.m_inetAddrs = tuple(self.m_inetAddrs)
-            self.m_inet6Addrs = tuple(self.m_inet6Addrs)
-
-        return (self.m_inetAddrs, self.m_inet6Addrs)
-
-    def isSameHost(self, host):
-        '''
-        Compares <host> with this host by published address
-        '''
-        (thisInetAddrs, thisInet6Addrs) = self.getAddrs()
-        (thatInetAddrs, thatInet6Addrs) = host.getAddrs()
-
-        for addr in thisInetAddrs:
-            if addr in thatInetAddrs:
-                return True
-        for addr in thisInet6Addrs:
-            if addr in thatInet6Addrs:
-                return True
-
-        return False
 
     def tryParamikoConnect(self, client, pwd=None, silence=False):
         try:
@@ -324,10 +269,6 @@ class Host:
         ok = not self.m_popen.close()
         self.m_popen = None
         return (ok, content)
-
-    def setRemoteID(self, ID):
-        'Save the remote ID'
-        self.m_remoteID = ID
 
 
 def parseCommandLine():
