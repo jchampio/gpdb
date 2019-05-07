@@ -121,17 +121,6 @@ class Host:
     def isPclosed(self):
         return self.m_popen is None;
 
-    def tryParamikoConnect(self, client, pwd=None, silence=False):
-        try:
-            client.connect(self.m_host, password=pwd)
-            return True
-        except paramiko.AuthenticationException:
-            if not silence: print >> sys.stderr, '[ERROR %s] bad password' % (self.m_host)
-            return False
-        except paramiko.SSHException, e:
-            if not silence: print >> sys.stderr, '[ERROR %s] %s' % (self.m_host, str(e))
-            return False
-
     def sendLocalID(self, ID, passwd, tempDir):
         '''
         Send local ID to remote over SSH, and append to authorized_key.
@@ -139,21 +128,13 @@ class Host:
         id_rsa.pub files are obtained from the target host.  These files
         are placed in <tempDir>/<self.m_host>
         '''
+
         p = None
         cin = cout = cerr = None
         try:
             p = paramiko.SSHClient()
             p.load_system_host_keys()
-            ok = self.tryParamikoConnect(p, silence=True)
-            if not ok:
-                for pwd in passwd:
-                    ok = self.tryParamikoConnect(p, pwd, silence=True)
-                    if ok: break
-            while not ok:
-                print >> sys.stderr, '  ***'
-                pwd = getpass.getpass('  *** Enter password for %s: ' % (self.m_host), sys.stderr)
-                if pwd: ok = self.tryParamikoConnect(p, pwd)
-                if ok: passwd.append(pwd)
+            p.connect(self.m_host, password=None)
 
             # Create .ssh directory and ensure content meets permission requirements
             # for password-less SSH
@@ -590,6 +571,17 @@ try:
         print '[INFO] tempDir=%s' % tempDir
 
     discovered_authorized_keys_file = os.path.join(tempDir, 'authorized_keys')
+
+    ######################
+    #  step 0
+    #
+    #    Ensure the local host can password-less ssh into each remote host
+    for remoteHost in GV.allHosts:
+        cmd = ['ssh', remoteHost.host(), '-o', 'BatchMode=yes', '-o', 'StrictHostChecking=yes',  'true']
+        retcode = subprocess.call(cmd)
+        if retcode:
+            print >> sys.stderr, '[ERROR]: 1-N is not set up from local to host %s' % remoteHost.host()
+            sys.exit(1)
 
     ######################
     #  step 1
