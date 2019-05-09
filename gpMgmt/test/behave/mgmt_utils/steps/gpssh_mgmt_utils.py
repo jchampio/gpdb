@@ -56,13 +56,34 @@ def run_exkeys(hosts, capture=False):
         subprocess.check_call(args)
         return
 
-    # Capture stdout/err for later use.
-    # TODO: instead of suppressing stdout/err, tee it somehow so that we still
-    # get the standard Behave capture mechanism.
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = p.communicate()
+    # Capture stdout/err for later use, while routing it through tee(1) so that
+    # developers can still see the live stream output.
+    #
+    # XXX This is a very heavy-weight solution, using pipes.Template() for the
+    # creation of shell pipeline processes. It's also platform-specific as it
+    # relies on the functionality of /dev/stdout and /dev/stderr.
+    #
+    # The overview: we open up two shell processes running tee(1), using
+    # pipes.Template(), and connect their standard output to the stdout/err of
+    # the current Python process using Template.open(). We then connect the
+    # stdout/stderr streams of subprocess.call() to the stdin of those tee
+    # pipelines. tee(1) will duplicate all output to temporary files, which we
+    # read after the subprocess call completes. NamedTemporaryFile() then cleans
+    # up those files when we return.
+    with tempfile.NamedTemporaryFile() as temp_out, tempfile.NamedTemporaryFile() as temp_err:
+        pipe_out = pipes.Template()
+        pipe_out.append('tee %s' % pipes.quote(temp_out.name), '--')
 
-    return p.returncode, stdout, stderr
+        pipe_err = pipes.Template()
+        pipe_err.append('tee %s' % pipes.quote(temp_err.name), '--')
+
+        with pipe_out.open('/dev/stdout', 'w') as out, pipe_err.open('/dev/stderr', 'w') as err:
+            ret = subprocess.call(args, stdout=out, stderr=err)
+
+        stored_out = temp_out.read()
+        stored_err = temp_err.read()
+
+    return ret, stored_out, stored_err
 
 @then('gpssh-exkeys writes "{output}" to stderr')
 def impl(context, output):
