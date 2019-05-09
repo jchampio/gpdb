@@ -577,7 +577,7 @@ try:
     #
     #    Ensure the local host can password-less ssh into each remote host
     for remoteHost in GV.allHosts:
-        cmd = ['ssh', remoteHost.host(), '-o', 'BatchMode=yes', '-o', 'StrictHostChecking=yes',  'true']
+        cmd = ['ssh', remoteHost.host(), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',  'true']
         retcode = subprocess.call(cmd)
         if retcode:
             print >> sys.stderr, '[ERROR]: 1-N is not set up from local to host %s' % remoteHost.host()
