@@ -120,12 +120,13 @@ class Host:
     def isPclosed(self):
         return self.m_popen is None;
 
-    def sendLocalID(self, ID, tempDir):
+    def retrieveSSHFiles(self, tempDir):
         '''
-        Send local ID to remote over SSH, and append to authorized_key.
-        If <tempDir> is specified, the authorized_keys, known_hosts, and
-        id_rsa.pub files are obtained from the target host.  These files
-        are placed in <tempDir>/<self.m_host>
+        Ensure that appropriate structure and permissions for the .ssh
+        directory. If <tempDir> is specified, the authorized_keys,
+        known_hosts, and id_rsa.pub files are obtained from the target
+        host. These files are placed in <tempDir>/<self.m_host>
+
         '''
 
         p = None
@@ -206,8 +207,6 @@ class Host:
                 # used can be interrupted by the SIGCHLD signal popped by destruction of the
                 # process spawned to run the tar command -- Paramiko isn't ready for that to
                 # happen.
-
-            return True
 
         finally:
             if cin: cin.close()
@@ -665,55 +664,52 @@ try:
     #
     print;
     print '[STEP 3 of 5] authorize current user on remote hosts'  # serial
-    errmsg = None
     newKeys = None
     try:
         for h in GV.allHosts:
             print '  ... send to', h.host()
             isExistingHost = (h in GV.existingHosts)
-            send_local_id = False
             try:
-                send_local_id = h.sendLocalID(localID, tempDir if isExistingHost else None)
+                h.retrieveSSHFiles(tempDir if isExistingHost else None)
             except socket.error, e:
                 errmsg = '[ERROR %s] %s' % (h.host(), e)
                 print >> sys.stderr, errmsg
-            if not send_local_id:
                 errmsg = '[ERROR %s] skipping key exchange for %s' % (h.host(), h.host())
                 print >> sys.stderr, errmsg
                 errmsg = '[ERROR %s] unable to authorize current user' % h.host()
                 print >> sys.stderr, errmsg
-            else:
-                if isExistingHost:
-                    # Now extract the .ssh files from the tarball into the
-                    # host-specific directory
-                    tarfileName = os.path.join(tempDir, '%s.tar' % h.host())
-                    hostDir = os.path.join(tempDir, h.host())
-                    os.mkdir(hostDir)
-                    cmd = 'cd %s && tar xf %s' % (hostDir, tarfileName)
-                    if GV.opt['-v']: print '[INFO %s]: %s' % (h.host(), cmd)
-                    tarproc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    (tarout, tarerr) = tarproc.communicate()
-                    if tarproc.returncode != 0:
-                        print >> sys.stderr, '[WARNING %s] cannot extract SSH files;' % h.host()
-                        for line in tarerr.splitlines():
-                            print >> sys.stderr, '    ', line
-                        print >> sys.stderr, '    One or more existing authentication files may be replaced on %s' % h.host()
+                sys.exit(1)
 
-                    hostId = os.path.join(hostDir, 'id_rsa.pub')
-                    if os.path.exists(hostId) and not filecmp.cmp(GV.id_rsa_pub_fname, hostId):
-                        if not newKeys:
-                            newKeys = open(discovered_authorized_keys_file, 'w')
-                        print '  ...... appending %s ID to authorized_keys' % h.host()
-                        with open(hostId) as hostPub:
-                            for line in hostPub:
-                                newKeys.write(line)
-                            newKeys.flush()
+            if isExistingHost:
+                # Now extract the .ssh files from the tarball into the
+                # host-specific directory
+                tarfileName = os.path.join(tempDir, '%s.tar' % h.host())
+                hostDir = os.path.join(tempDir, h.host())
+                os.mkdir(hostDir)
+                cmd = 'cd %s && tar xf %s' % (hostDir, tarfileName)
+                if GV.opt['-v']: print '[INFO %s]: %s' % (h.host(), cmd)
+                tarproc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                (tarout, tarerr) = tarproc.communicate()
+                if tarproc.returncode != 0:
+                    print >> sys.stderr, '[WARNING %s] cannot extract SSH files;' % h.host()
+                    for line in tarerr.splitlines():
+                        print >> sys.stderr, '    ', line
+                    print >> sys.stderr, '    One or more existing authentication files may be replaced on %s' % h.host()
 
-                # Ensure the proper password-less access to the remote host.
-                if not testAccess(h.host()):
-                    errmsg = '*'  # message already issued
+                hostId = os.path.join(hostDir, 'id_rsa.pub')
+                if os.path.exists(hostId) and not filecmp.cmp(GV.id_rsa_pub_fname, hostId):
+                    if not newKeys:
+                        newKeys = open(discovered_authorized_keys_file, 'w')
+                    print '  ...... appending %s ID to authorized_keys' % h.host()
+                    with open(hostId) as hostPub:
+                        for line in hostPub:
+                            newKeys.write(line)
+                        newKeys.flush()
 
-            if errmsg: sys.exit(1)
+            # Ensure the proper password-less access to the remote host.
+            if not testAccess(h.host()):
+                sys.exit(1)
+
     finally:
         if newKeys:
             newKeys.close()
