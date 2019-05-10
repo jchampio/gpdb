@@ -132,10 +132,6 @@ class Host:
         p = None
         cin = cout = cerr = None
         try:
-            p = paramiko.SSHClient()
-            p.load_system_host_keys()
-            p.connect(self.m_host, password=None)
-
             # Create .ssh directory and ensure content meets permission requirements
             # for password-less SSH
             #
@@ -150,22 +146,27 @@ class Host:
                    'chmod 0600 .ssh/auth* .ssh/id*; ' +
                    'chmod 0644 .ssh/id*.pub .ssh/config')
             if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_host, cmd)
-            (cin, cout, cerr) = p.exec_command(cmd)
-            cin.close();
-            exitStatus = cout.channel.recv_exit_status()
+
+            args = ['ssh', self.m_host, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-n',
+                    cmd]
+            p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+
             if GV.opt['-v']:
-                print '[INFO %s]: exit status=%s' % (self.m_host, exitStatus)
-                if cout.channel.recv_ready():
+                print '[INFO %s]: exit status=%s' % (self.m_host, p.returncode)
+                if stdout:
                     print '[INFO] stdout:'
-                    for line in cout:
+                    for line in stdout.splitlines():
                         print '    ', line.rstrip()
-                if cout.channel.recv_stderr_ready():
+                if stderr:
                     print '[INFO] stderr:'
-                    for line in cerr:
+                    for line in stderr.splitlines():
                         print '    ', line.rstrip()
                 print
-            cout.close();
-            cerr.close()
+
+            p = paramiko.SSHClient()
+            p.load_system_host_keys()
+            p.connect(self.m_host, password=None)
 
             # If tempDir is specified, obtain a copy of the ssh
             # files that should be preserved for existing hosts.
