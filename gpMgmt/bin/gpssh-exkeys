@@ -68,7 +68,6 @@ class Global:
     opt['-f'] = False
     opt['-x'] = False  # new hosts for expansion
     opt['-e'] = False  # existing hosts file for expansion
-    passwd = []
     # ssh commands don't respect $HOME; they always use the home
     # directory supplied in /etc/passwd so sshd can find the same
     # directory.
@@ -121,7 +120,7 @@ class Host:
     def isPclosed(self):
         return self.m_popen is None;
 
-    def sendLocalID(self, ID, passwd, tempDir):
+    def sendLocalID(self, ID, tempDir):
         '''
         Send local ID to remote over SSH, and append to authorized_key.
         If <tempDir> is specified, the authorized_keys, known_hosts, and
@@ -691,7 +690,7 @@ try:
             isExistingHost = (h in GV.existingHosts)
             send_local_id = False
             try:
-                send_local_id = h.sendLocalID(localID, GV.passwd, tempDir if isExistingHost else None)
+                send_local_id = h.sendLocalID(localID, tempDir if isExistingHost else None)
             except socket.error, e:
                 errmsg = '[ERROR %s] %s' % (h.host(), e)
                 print >> sys.stderr, errmsg
