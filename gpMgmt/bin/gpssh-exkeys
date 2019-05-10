@@ -181,11 +181,9 @@ class Host:
                     print >> sys.stderr, '    ', line.rstrip()
                     print >> sys.stderr, '    One or more existing authentication files may be replaced on %s' % self.m_host
 
-            # The tar file content is expected to be extacted by the caller.  Doing it
-            # here causes Paramiko Transport grief on Linux systems.  (The Event.wait()
-            # used can be interrupted by the SIGCHLD signal popped by destruction of the
-            # process spawned to run the tar command -- Paramiko isn't ready for that to
-            # happen.
+            # TODO: Paramiko previously prevented us from extracting
+            # the tarfile contents here. Now that we no longer use
+            # Paramiko, that can be revisited.
 
     def popen(self, cmd):
         'Run a command and save popen handle in this Host instance.'
@@ -616,24 +614,20 @@ try:
     ######################
     #  step 3
     #
-    #    Temporarily append the localID to the authorized_keys file of
-    #    each host to allow password-less SSH.  This is a temporary measure --
-    #    the authorized_keys file on each host is replaced in a later step.
-    #
-    #    This step also obtains a copy of any existing authorized_keys,
+    #    This step obtains a copy of any existing authorized_keys,
     #    known_hosts, and id_rsa.pub files for existing hosts so they
-    #    may be updated rather than replaced (as is done for new hosts).
+    #    may be updated rather than replaced (as is done for new
+    #    hosts).
     #
     #    The id_rsa.pub file from any existing host is collected for
     #    addition to this host's authorized_keys file and subsequent
     #    sharing with all hosts.
     #
     #    The last step for each host is ensuring that password-less access
-    #    from the current user is enabled.  This is done using SSH rather
-    #    than Paramiko to ensure that normal SSH processing is possible.
+    #    from the current user is enabled.
     #
     print;
-    print '[STEP 3 of 5] authorize current user on remote hosts'  # serial
+    print '[STEP 3 of 5] retrieving credentials from remote hosts'  # serial
     newKeys = None
     try:
         for h in GV.allHosts:
