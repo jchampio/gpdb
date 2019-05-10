@@ -207,24 +207,7 @@ class Host:
                 # process spawned to run the tar command -- Paramiko isn't ready for that to
                 # happen.
 
-            # Append the ID to authorized_keys; this is *temporary* --
-            # authorized_keys is expected to be replaced when the master
-            # .ssh content is shipped to the host.
-            cmd = 'echo \"%s\" >> .ssh/authorized_keys && echo ok ok ok' % ID
-            if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_host, cmd)
-            (cin, cout, cerr) = p.exec_command(cmd)
-            cin.close()
-            line = cout.readline()
-            ok = (line.find('ok ok ok') >= 0)
-            if not ok:
-                print >> sys.stderr, '[ERROR] cannot append local ID to authorized_keys on %s' % self.m_host
-                for line in cerr:
-                    print >> sys.stderr, '    ', line.rstrip()
-                print >> sys.stderr
-            cout.close();
-            cerr.close()
-
-            return ok
+            return True
 
         finally:
             if cin: cin.close()
