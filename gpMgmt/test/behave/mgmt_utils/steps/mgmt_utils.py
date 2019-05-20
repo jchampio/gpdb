@@ -1,3 +1,4 @@
+import codecs
 import math
 import fnmatch
 import getpass
@@ -1320,9 +1321,16 @@ def impl(context, filename, output):
 def find_string_in_master_data_directory(context, filename, output, escapeStr=False):
     contents = ''
     file_path = os.path.join(master_data_dir, filename)
-    with open(file_path) as fr:
+
+    if isinstance(output, unicode):
+        f = codecs.open(file_path, encoding='utf-8')
+    else:
+        f = open(file_path)
+
+    with f as fr:
         for line in fr:
             contents = line.strip()
+
     if escapeStr:
         output = re.escape(output)
     pat = re.compile(output)
@@ -1414,7 +1422,12 @@ def impl(context, filename, output):
         cmd_str = 'ssh %s "tail -n1 %s"' % (host, filepath)
         cmd = Command(name='Running remote command: %s' % cmd_str, cmdStr=cmd_str)
         cmd.run(validateAfter=True)
-        if output not in cmd.get_stdout():
+
+        actual = cmd.get_stdout()
+        if isinstance(output, unicode):
+            actual = actual.decode('utf-8')
+
+        if output not in actual:
             raise Exception('File %s on host %s does not contain "%s"' % (filepath, host, output))
 
 @given('the gpfdists occupying port {port} on host "{hostfile}"')
