@@ -1,10 +1,13 @@
 @gpconfig
 Feature: gpconfig integration tests
 
-    # Below, we use 2 change (-c) operations to prove that we have changed a file,
-    # because any existing postgresql.conf file could already have the first value in it a priori
-    # NOTE: since we are restarting the database with the given paramaters, do not change parameters
-    #   that will cause the database to not restart given your machine setup.
+    # Below, we use 2 change (-c) operations to prove that we have changed a
+    # file, because any existing postgresql.conf file could already have the
+    # first value in it a priori
+    #
+    # NOTE: since we are SIGHUPing the database after each change (full restarts
+    # would be too slow), you must choose parameters with a sighup or weaker
+    # context.
 
     @concourse_cluster
     @demo_cluster
