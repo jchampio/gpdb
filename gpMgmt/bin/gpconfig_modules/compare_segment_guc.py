@@ -105,20 +105,150 @@ class MultiValueGuc(SegmentGuc):
             self.db_seg_guc.value,
             file_tag)
 
+    class ParseError(Exception):
+        pass
+
+    class _StringStream(object):
+        """
+        A helper class for _unquote() that implements next() and peek()
+        operations for a byte string, to turn it into a "stream".
+        """
+        def __init__(self, s):
+            self._str = s
+            self._len = len(s)
+            self._i = 0
+
+        def peek(self):
+            if self._i >= self._len:
+                return ''
+
+            return self._str[self._i]
+
+        def next(self):
+            if self._i >= self._len:
+                return ''
+
+            char = self._str[self._i]
+            self._i += 1
+            return char
+
+    @staticmethod
+    def _isoctal(char):
+        return char in ('0', '1', '2', '3', '4', '5', '6', '7')
+
+    @staticmethod
+    def _unquote(guc_value):
+        if not guc_value:
+            raise MultiValueGuc.ParseError('parameter value is empty')
+
+        # Don't unquote values that aren't quoted.
+        if guc_value[0] != "'":
+            return guc_value
+
+        # Make sure we have an ending quote, then strip them.
+        if len(guc_value) == 1 or guc_value[-1] != "'":
+            raise MultiValueGuc.ParseError('missing final single quote')
+
+        guc_value = guc_value[1:-1]
+
+        quoted = []
+        stream = MultiValueGuc._StringStream(guc_value)
+        while True:
+            char = stream.next()
+            if not char:
+                break
+
+            if char == '\\':
+                char = stream.next()
+                if not char:
+                    raise MultiValueGuc.ParseError('invalid trailing backslash')
+
+                # Handle standard backslash escapes.
+                if char == 'b':
+                    char = '\b'
+                elif char == 'f':
+                    char = '\f'
+                elif char == 'n':
+                    char = '\n'
+                elif char == 'r':
+                    char = '\r'
+                elif char == 't':
+                    char = '\t'
+
+                # Handle octal escapes (e.g. \023).
+                elif MultiValueGuc._isoctal(char):
+                    octal = int(char)
+
+                    # Octal escapes can have a maximum of three digits.
+                    for _ in range(2):
+                        char = stream.peek()
+                        if not MultiValueGuc._isoctal(char):
+                            break
+
+                        octal = (octal << 3) + int(char)
+                        stream.next() # advance
+
+                    # Translate back to a character (truncating to one byte).
+                    char = chr(octal & 0xFF)
+
+            # Handle escaped single quotes.
+            elif char == "'":
+                char = stream.next()
+                if char != "'":
+                    raise MultiValueGuc.ParseError('invalid single quote')
+
+            quoted.append(char)
+
+        return ''.join(quoted)
+
+    def compare_db_and_file_values(self, db_guc, file_guc):
+        db_guc_escaped = db_guc.replace("\b", "\\b") \
+                               .replace("\f", "\\f") \
+                               .replace("\n", "\\n") \
+                               .replace("\r", "\\r") \
+                               .replace("\t", "\\t")
+        db_guc_list = list(db_guc_escaped)
+        db_guc_length = len(db_guc_list)
+        db_guc_parsed = []
+        for i in range(len(db_guc_list)):
+            character = db_guc_list[i]
+            if character == '\\':
+                k = 0
+                next_character = db_guc_list[i + k]
+                octal_value = 0
+                while k < 3 and (k + i < db_guc_length) and next_character in ['0', '1', '2', '3', '4', '5', '6', '7']:
+                    octal_value = (octal_value << 3) + int(db_guc_list[i + k])
+                    k += 1
+                    next_character = db_guc_list[k]
+
+                i += k - 1
+                db_guc_parsed.append(chr(octal_value))
+            else:
+                db_guc_parsed.append(character)
+
+        if len(file_guc) >= 2 and file_guc[0] == "'" and file_guc[-1] == "'":
+            db_guc_parsed.insert(0, "'")
+            db_guc_parsed.append("'")
+
+        return db_guc_list == file_guc
+
     def is_internally_consistent(self):
         if not self.db_seg_guc:
             return self.compare_primary_and_mirror_files()
-        else:
-            if self.primary_file_seg_guc is None:
-                return True
-            if self.primary_file_seg_guc.get_value() is None:
-                return True
-            result = True
-            if self.mirror_file_seg_guc and self.db_seg_guc:
-                result = self.mirror_file_seg_guc.value == self.db_seg_guc.value
-            if not result:
-                return result
-            return self.db_seg_guc.value == self.primary_file_seg_guc.value and result
+
+        if self.primary_file_seg_guc is None:
+            return True
+        if self.primary_file_seg_guc.get_value() is None:
+            return True
+
+        result = True
+
+        if self.mirror_file_seg_guc and self.db_seg_guc:
+            result = self.compare_db_and_file_values(self.db_seg_guc.value, self.mirror_file_seg_guc.value)
+        if not result:
+            return result
+
+        return self.compare_db_and_file_values(self.db_seg_guc.value, self.primary_file_seg_guc.value) and result
 
     def get_value(self):
         file_value = ""

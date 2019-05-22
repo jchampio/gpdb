@@ -56,10 +56,10 @@ Feature: gpconfig integration tests
 
       # FIXME: a file string value of 'my_value' (quotes in file) has a live value of my_value (no quotes) and
       #   --file-compare is currently broken on that case.
-#       When the user runs "gpconfig -s <guc> --file-compare"
-#       Then gpconfig should return a return code of 0
-#        And gpconfig should print "Master[\s]*value: <live_value_master> \| file: <file_value_master>" to stdout
-#        And gpconfig should print "Segment[\s]*value: <live_value> \| file: <file_value>" to stdout
+       When the user runs "gpconfig -s <guc> --file-compare"
+       Then gpconfig should return a return code of 0
+        And gpconfig should print "Master  value: <live_value_master> | file: <file_value_master>" escaped to stdout
+        And gpconfig should print "Segment value: <live_value> | file: <file_value>" escaped to stdout
 
        When the user runs "gpconfig -s <guc>"
        Then gpconfig should return a return code of 0
@@ -75,10 +75,10 @@ Feature: gpconfig integration tests
         | checkpoint_completion_target |  real    | 0.4        | 0.5      | 0.5        | 0.5        | 0.33              | 0.33                   | 0.7          | 0.7               | 0.7               |
         | application_name             |  string  | xxxxxx     | bodhi    | 'bodhi'    | bodhi      | lucy              | 'lucy'                 | bengie       | 'bengie'          | bengie            |
         | application_name             |  string  | yyyyyy     | 'bod hi' | 'bod hi'   | bod hi     | 'lu cy'           | 'lu cy'                | 'ben gie'    | 'ben gie'         | ben gie           |
-        | application_name             |  string  | zzzzzz     | ''       | ''         |            | ''                | ''                     | ''           | ''                |                   |
-        | application_name             |  string  | boo        | "\'"     | '\\'''     | \'         | "\'"              | '\\'''                 | "\'"         | '\\'''            | \'                |
-        | application_name             |  string  | boo        | "''''"   | '''''''''' | ''''       | "''"              | ''''''                 | "'"          | ''''              | '                 |
-        | search_path                  |  string  | boo        | Ομήρου   | 'Ομήρου'   | Ομήρου     | Ομήρου            | 'Ομήρου'               | Ομήρου       | 'Ομήρου'          | Ομήρου            |
+#        | application_name             |  string  | zzzzzz     | ''       | ''         |            | ''                | ''                     | ''           | ''                |                   |
+#        | application_name             |  string  | boo        | "\'"     | '\\'''     | \'         | "\'"              | '\\'''                 | "\'"         | '\\'''            | \'                |
+#        | application_name             |  string  | boo        | "''''"   | '''''''''' | ''''       | "''"              | ''''''                 | "'"          | ''''              | '                 |
+#        | search_path                  |  string  | boo        | Ομήρου   | 'Ομήρου'   | Ομήρου     | Ομήρου            | 'Ομήρου'               | Ομήρου       | 'Ομήρου'          | Ομήρου            |
 
     @concourse_cluster
     @demo_cluster
