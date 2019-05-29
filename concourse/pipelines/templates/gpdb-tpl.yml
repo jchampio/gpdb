@@ -1770,10 +1770,25 @@ jobs:
           image: ccp-image
           params:
             BEHAVE_FLAGS: --tags=[[ test.name ]] --tags=concourse_cluster
+            TEST_NAME: [[ test.name ]]
           on_success:
             <<: *ccp_destroy
           ensure:
             <<: *set_failed
+        - task: publish_coverage
+          image: gpdb6-centos6-test
+          config:
+            platform: linux
+            inputs:
+              - name: gpdb_src
+              - name: coverage
+            run:
+              path: gpdb_src/concourse/scripts/s3_sync
+              args: [ "./coverage/", "s3://((coverage-bucket-name))/" ]
+            params:
+              AWS_ACCESS_KEY_ID: {{bucket-access-key-id}}
+              AWS_SECRET_ACCESS_KEY: {{bucket-secret-access-key}}
+              AWS_DEFAULT_REGION: {{aws-region}}
       {% endif %}
       - do:
         - get: bin_gpdb
@@ -1785,6 +1800,7 @@ jobs:
           image: gpdb6-centos6-test
           params:
             BEHAVE_FLAGS: --tags=[[ test.name ]] --tags=~concourse_cluster,demo_cluster
+            TEST_NAME: [[ test.name ]]
 
 {% endfor %}
 
