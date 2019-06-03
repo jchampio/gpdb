@@ -150,6 +150,7 @@ COVEOF
     cp /tmp/sitecustomize.py /usr/local/greenplum-db-devel/lib/python
     cp /tmp/coveragerc /usr/local/greenplum-db-devel
     mkdir -p $coverage_path
+    chown gpadmin:gpadmin $coverage_path
 
     # Enable coverage instrumentation after sourcing greenplum_path.
     echo 'export COVERAGE_PROCESS_START=/usr/local/greenplum-db-devel/coveragerc' >> /usr/local/greenplum-db-devel/greenplum_path.sh

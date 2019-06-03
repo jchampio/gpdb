@@ -493,6 +493,8 @@ resources:
     repository: pivotaldata/gpdb6-centos7-build
     tag: latest
 
+{% endif %}
+{% if "centos7" in os_types or "CLI" in test_sections %}
 - name: gpdb6-centos7-test
   type: docker-image
   source:
@@ -1746,6 +1748,7 @@ jobs:
             - gpMgmt/bin/pythonSrc/ext
         passed: [gate_cli_start]
       - get: gpdb6-centos6-test
+      - get: gpdb6-centos7-test
     - aggregate:
       {% if test.use_concourse_cluster %}
       - do:
@@ -1778,19 +1781,17 @@ jobs:
           ensure:
             <<: *set_failed
         - task: publish_coverage
-          image: gpdb6-centos6-test
+          image: gpdb6-centos7-test
           config:
             platform: linux
             inputs:
               - name: gpdb_src
               - name: coverage
             run:
-              path: gpdb_src/concourse/scripts/s3_sync
-              args: [ "./coverage/", "s3://((coverage-bucket-name))/" ]
+              path: gpdb_src/concourse/scripts/gsutil_rsync
+              args: [ "./coverage/", "gs://((coverage-bucket-name))/" ]
             params:
-              AWS_ACCESS_KEY_ID: {{bucket-access-key-id}}
-              AWS_SECRET_ACCESS_KEY: {{bucket-secret-access-key}}
-              AWS_DEFAULT_REGION: {{aws-region}}
+              JSON_KEY: {{coverage-bucket-service-account-key}}
       {% endif %}
       - do:
         - get: bin_gpdb
@@ -1809,7 +1810,7 @@ jobs:
 - name: combine_cli_coverage
   plan:
     - aggregate:
-      - get: gpdb6-centos6-test
+      - get: gpdb6-centos7-test
       - get: gpdb_src
         passed:
           - compile_gpdb_centos6
@@ -1820,7 +1821,7 @@ jobs:
           - [[ test.name ]]
         {% endfor %}
     - task: combine_coverage
-      image: gpdb6-centos6-test
+      image: gpdb6-centos7-test
       input_mapping:
         bin_gpdb: bin_gpdb_centos6
       config:
@@ -1830,11 +1831,9 @@ jobs:
           - name: bin_gpdb
         run:
           path: gpdb_src/concourse/scripts/combine_cli_coverage.bash
-          args: [ "s3://((coverage-bucket-name))/" ]
+          args: [ "gs://((coverage-bucket-name))/" ]
         params:
-          AWS_ACCESS_KEY_ID: {{bucket-access-key-id}}
-          AWS_SECRET_ACCESS_KEY: {{bucket-secret-access-key}}
-          AWS_DEFAULT_REGION: {{aws-region}}
+          JSON_KEY: {{coverage-bucket-service-account-key}}
 
 {% if "centos6" in os_types and "ICW" in test_sections %}
 - name: pg_upgrade

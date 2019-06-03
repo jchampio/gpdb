@@ -15,7 +15,8 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 
-BUCKET="$1"
+# Trim any trailing slash from the bucket name.
+BUCKET="${1%/}"
 CWD=$(pwd)
 read -r COMMIT_SHA < gpdb_src/.git/HEAD
 
@@ -25,13 +26,29 @@ read -r COMMIT_SHA < gpdb_src/.git/HEAD
 source ./gpdb_src/concourse/scripts/common.bash
 time install_gpdb
 
-pip install awscli coverage
+pip install gsutil coverage
+
+# Save the JSON_KEY to a file, for later use by gsutil.
+keyfile=secret-key.json
+saved_umask=$(umask)
+umask 077
+cat - <<< "$JSON_KEY" > "$keyfile"
+umask "${saved_umask}"
+
+# Generate a Boto configuration file for gsutil.
+cat - > boto.cfg <<EOF
+[Boto]
+https_validate_certificates = True
+[Credentials]
+gs_service_key_file = $(pwd)/$keyfile
+EOF
+export BOTO_CONFIG=$(pwd)/boto.cfg
 
 # Pull down the coverage data for our current commit.
 mkdir ./coverage
-aws s3 sync "$BUCKET" ./coverage --exclude '*' --include "$COMMIT_SHA/*"
+gsutil -m rsync -r "$BUCKET/$COMMIT_SHA" ./coverage
 
-cd "./coverage/$COMMIT_SHA"
+cd ./coverage/
 
 # Installing GPDB gets most of the source we need, but Python sources that were
 # inside the Git repo when they executed will be in a different location on this
@@ -51,8 +68,9 @@ EOF
 find . -name '*.coverage.*' -print0 | xargs -0 coverage combine --append
 
 # Generate an HTML report and sync it back to the bucket, then print out a quick
-# text report for developers perusing the CI directly.
+# text report for developers perusing the CI directly. The artifacts we push are
+# publicly readable, to make it easy to browse the HTML.
 # XXX remove both -i's below once Python versions are fixed
-coverage html -i -d .
-aws s3 sync .. "$BUCKET"
+coverage html -i -d ./html
+gsutil -m rsync -r -a public-read ./html "$BUCKET/$COMMIT_SHA"
 coverage report -i
