@@ -1780,7 +1780,7 @@ jobs:
             <<: *ccp_destroy
           ensure:
             <<: *set_failed
-        - task: publish_coverage
+        - task: publish_ccp_coverage
           image: gpdb6-centos7-test
           config:
             platform: linux
@@ -1788,7 +1788,7 @@ jobs:
               - name: gpdb_src
               - name: coverage
             run:
-              path: gpdb_src/concourse/scripts/gsutil_rsync
+              path: gpdb_src/concourse/scripts/gsutil_sync
               args: [ "./coverage/", "gs://((coverage-bucket-name))/" ]
             params:
               JSON_KEY: {{coverage-bucket-service-account-key}}
@@ -1804,6 +1804,18 @@ jobs:
           params:
             BEHAVE_FLAGS: --tags=[[ test.name ]] --tags=~concourse_cluster,demo_cluster
             TEST_NAME: [[ test.name ]]
+        - task: publish_demo_coverage
+          image: gpdb6-centos7-test
+          config:
+            platform: linux
+            inputs:
+              - name: gpdb_src
+              - name: coverage
+            run:
+              path: gpdb_src/concourse/scripts/gsutil_sync
+              args: [ "./coverage/", "gs://((coverage-bucket-name))/" ]
+            params:
+              JSON_KEY: {{coverage-bucket-service-account-key}}
 
 {% endfor %}
 

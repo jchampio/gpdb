@@ -69,8 +69,9 @@ find . -name '*.coverage.*' -print0 | xargs -0 coverage combine --append
 
 # Generate an HTML report and sync it back to the bucket, then print out a quick
 # text report for developers perusing the CI directly. The artifacts we push are
-# publicly readable, to make it easy to browse the HTML.
+# publicly readable, to make it easy to browse the HTML. They're also gzipped to
+# save on storage (see the -Z option for `gsutil cp`).
 # XXX remove both -i's below once Python versions are fixed
 coverage html -i -d ./html
-gsutil -m rsync -r -a public-read ./html "$BUCKET/$COMMIT_SHA"
+gsutil -m cp -rZ -a public-read ./html/* "$BUCKET/$COMMIT_SHA/html"
 coverage report -i

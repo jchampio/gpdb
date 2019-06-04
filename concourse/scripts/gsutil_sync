@@ -1,7 +1,9 @@
 #! /bin/bash
 #
 # A helper for syncing a folder to a GCS bucket, since Concourse resources can't
-# do that for you.
+# do that for you. Objects will be given a compressed Content-Encoding (see
+# the `-Z` option for `gsutil cp`) to save on storage. NOTE: this will need to
+# be changed if we start uploading poorly compressible data.
 #
 # Usage: ./gsutil_rsync SRC DST
 #
@@ -42,4 +44,4 @@ EOF
 export BOTO_CONFIG=$(pwd)/boto.cfg
 
 pip install gsutil
-gsutil -m rsync -r "$1" "$2"
+gsutil -m cp -rZ "$1"/* "$2"
