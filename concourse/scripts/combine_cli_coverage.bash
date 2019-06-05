@@ -53,13 +53,15 @@ cd ./coverage/
 # Installing GPDB gets most of the source we need, but Python sources that were
 # inside the Git repo when they executed will be in a different location on this
 # machine compared to the test clusters. Here, we use [paths] to tell
-# coverage.py that any source files under /home/*/gpdb_src on the clusters can
-# be found in our local copy of gpdb_src.
+# coverage.py that any source files under /home/*/gpdb_src (for CCP clusters) or
+# /tmp/build/*/gpdb_src (for demo clusters) can be found in our local copy of
+# gpdb_src.
 cat > .coveragerc <<EOF
 [paths]
 source =
     $CWD/gpdb_src
     /home/*/gpdb_src
+    /tmp/build/*/gpdb_src
 EOF
 
 # Now combine the individual coverage data files for analysis. There can be
@@ -71,7 +73,6 @@ find . -name '*.coverage.*' -print0 | xargs -0 coverage combine --append
 # text report for developers perusing the CI directly. The artifacts we push are
 # publicly readable, to make it easy to browse the HTML. They're also gzipped to
 # save on storage (see the -Z option for `gsutil cp`).
-# XXX remove both -i's below once Python versions are fixed
-coverage html -i -d ./html
+coverage html -d ./html
 gsutil -m cp -rZ -a public-read ./html/* "$BUCKET/$COMMIT_SHA/html"
-coverage report -i
+coverage report
