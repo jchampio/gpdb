@@ -38,7 +38,10 @@ function _main() {
 
     install_and_configure_gpdb
     setup_gpadmin_user
-    make_cluster
+
+    # Run inside a subshell so it does not pollute the environment after
+    # sourcing greenplum_path
+    (make_cluster)
 
     # pip-install the gpMgmt requirements file.
     install_python_hacks
