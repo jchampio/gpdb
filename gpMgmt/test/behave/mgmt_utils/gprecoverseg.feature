@@ -119,7 +119,6 @@ Feature: gprecoverseg tests
         And the segments are synchronized
         And the backup pid file is deleted on "primary" segment
 
-    @foo
     Scenario: pg_isready functions on recovered segments
         Given the database is running
           And all the segments are running
