@@ -50,6 +50,9 @@ GpstopCheckIgnoreList = ['gp_reserved_gpdiskquota']
 DEFAULT_NUM_WORKERS = 64
 logger = get_default_logger()
 
+PG_CTL_STATUS_RUNNING = 0
+PG_CTL_STATUS_STOPPED = 3
+
 
 # ---------------------------------------------------------------
 class SegStopStatus:
@@ -422,21 +425,45 @@ class GpStop:
         self.dburl = dbconn.DbURL(port=self.port, dbname='template1')
         self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
 
+    def _stop_master_smart(self):
+        logger.info("Stopping master segment and waiting for user connections to exit...")
+
+        ret = subprocess.call(['pg_ctl', 'stop', '-W', '-m', 'smart',
+                               '-D', self.master_datadir])
+        if ret:
+            raise Exception('pg_ctl stop failed')
+
+        while True:
+            with open(os.devnull, 'w') as devnull:
+                ret = subprocess.call(['pg_ctl', 'status',
+                                       '-D', self.master_datadir],
+                                       stdout=devnull)
+
+            if ret == PG_CTL_STATUS_STOPPED:
+                return
+            if ret != PG_CTL_STATUS_RUNNING:
+                raise Exception('pg_ctl status failed')
+
+            # Sleep a little while. Keep this short, since the user can't
+            # interrupt this with SIGINT.
+            time.sleep(0.1)
 
     ######
     def _stop_master(self, masterOnly=False):
         ''' shutsdown the master '''
+        logger.info("Commencing Master instance shutdown with mode='%s'" % self.mode)
+        logger.info("Master segment instance directory=%s" % self.master_datadir)
+        logger.info("Master host=%s" % self.gparray.master.hostname)
 
-        self.conn = dbconn.connect(self.dburl, utility=True)
-        self._stop_master_checks()
-
-        self.conn.close()
+        if self.mode == 'fast':
+            logger.info("Using WAIT mode of %s seconds" % self.timeout)
 
         e = GpEraFile(self.master_datadir, logger=get_logger_if_verbose())
         e.end_era()
 
-        logger.info("Commencing Master instance shutdown with mode=%s" % self.mode)
-        logger.info("Master segment instance directory=%s" % self.master_datadir)
+        if self.mode == 'smart':
+            self._stop_master_smart()
+            return
 
         cmd = gp.MasterStop("stopping master", self.master_datadir, mode=self.mode, timeout=self.timeout)
         try:
@@ -470,35 +497,6 @@ class GpStop:
         unix.kill_9_segment_processes(self.master_datadir, self.dburl.pgport, mypid)
 
         logger.debug("Successfully shutdown the Master instance in admin mode")
-
-    ######
-    def _stop_master_checks(self):
-        total_connections = len(catalog.getUserPIDs(self.conn, GpstopCheckIgnoreList))
-        logger.info("There are %d connections to the database" % total_connections)
-
-        if total_connections > 0 and self.mode == 'smart':
-            logger.warning("There are other connections to this instance, shutdown mode smart aborted")
-            logger.warning("Either remove connections, or use 'gpstop -M fast' or 'gpstop -M immediate'")
-            logger.warning("See gpstop -? for all options")
-            raise ExceptionNoStackTraceNeeded("Active connections. Aborting shutdown...")
-
-        logger.info("Commencing Master instance shutdown with mode='%s'" % self.mode)
-        logger.info("Master host=%s" % self.gparray.master.hostname)
-
-        if self.mode == 'smart':
-            pass
-        elif self.mode == 'fast':
-            logger.info("Detected %d connections to database" % total_connections)
-            if total_connections > 0:
-                logger.info("Switching to WAIT mode")
-                logger.info("Will wait for shutdown to complete, this may take some time if")
-                logger.info("there are a large number of active complex transactions, please wait...")
-            else:
-                if self.timeout == SEGMENT_STOP_TIMEOUT_DEFAULT:
-                    logger.info("Using standard WAIT mode of %s seconds" % SEGMENT_STOP_TIMEOUT_DEFAULT)
-                else:
-                    logger.info("Using WAIT mode of %s seconds" % self.timeout)
-        pass
 
     ######
     def _stop_standby(self):
