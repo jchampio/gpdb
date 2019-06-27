@@ -1,6 +1,7 @@
 import imp
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -454,6 +455,13 @@ class GpStopSmartModeTestCase(unittest.TestCase):
         gpstop.logger = Mock(logging.Logger)
         self.gpstop = gpstop.GpStop('smart')
 
+        # _SigIntHandler requires an ignored SIGINT to start with.
+        self.orig_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    def tearDown(self):
+        # Restore the original SIGINT handler even on test failure.
+        signal.signal(signal.SIGINT, self.orig_handler)
+
     def _setup_subprocess(self, subprocess_call):
         self.stop_retval = 0
         self.status_callback = lambda: gpstop.PG_CTL_STATUS_STOPPED
@@ -509,6 +517,48 @@ class GpStopSmartModeTestCase(unittest.TestCase):
 
         with self.assertRaises(Exception):
             self.gpstop._stop_master_smart()
+
+    def test_SigIntHandler_must_have_SIGINT_ignored_on_entry(self, _):
+        handler = lambda num, frame: None
+        orig_handler = signal.signal(signal.SIGINT, handler)
+
+        try:
+            with self.assertRaises(Exception):
+                with gpstop.GpStop._SigIntHandler() as handler:
+                    pass
+
+            self.assertEqual(handler, signal.getsignal(signal.SIGINT))
+
+        finally:
+            # Restore the original signal handler even on test failure.
+            signal.signal(signal.SIGINT, orig_handler)
+
+    def test_SigIntHandler_catches_SIGINT_when_active(self, _):
+        with gpstop.GpStop._SigIntHandler() as handler:
+            self.assertFalse(handler.interrupted)
+            os.kill(os.getpid(), signal.SIGINT)
+            self.assertTrue(handler.interrupted)
+
+        # Ensure the context manager puts its previous handler back.
+        self.assertEqual(signal.SIG_IGN, signal.getsignal(signal.SIGINT))
+
+    def test_stop_master_smart_logs_message_on_Ctrl_C(self, subprocess_call):
+        self._setup_subprocess(subprocess_call)
+
+        self.status = gpstop.PG_CTL_STATUS_RUNNING
+        def _status():
+            # Send a SIGINT every time pg_ctl status is called, as if the user
+            # had issued a Ctrl-C.
+            os.kill(os.getpid(), signal.SIGINT)
+
+            # For the second call, return STOPPED.
+            status = self.status
+            self.status = gpstop.PG_CTL_STATUS_STOPPED
+            return status
+        self.status_callback = _status
+
+        self.gpstop._stop_master_smart()
+        gpstop.logger.info.assert_any_call("can't Ctrl-C")
 
 if __name__ == '__main__':
     run_tests()

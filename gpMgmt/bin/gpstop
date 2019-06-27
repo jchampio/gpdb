@@ -425,6 +425,29 @@ class GpStop:
         self.dburl = dbconn.DbURL(port=self.port, dbname='template1')
         self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
 
+    class _SigIntHandler(object):
+        def __init__(self):
+            self.interrupted = False
+
+        def _handler(self, signum, stack_frame):
+            self.interrupted = True
+
+        def __enter__(self):
+            self._prev_handler = signal.signal(signal.SIGINT, self._handler)
+
+            # Try to prevent easy mistakes by ensuring that SIGINT was
+            # ignored before we entered the manager.
+            if self._prev_handler != signal.SIG_IGN:
+                signal.signal(signal.SIGINT, self._prev_handler)
+                raise Exception("SIGINT disposition must be SIG_IGN before entering SigIntHandler")
+
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            # Put back the previous handler.
+            signal.signal(signal.SIGINT, self._prev_handler)
+            return False
+
     def _stop_master_smart(self):
         logger.info("Stopping master segment and waiting for user connections to exit...")
 
@@ -433,20 +456,25 @@ class GpStop:
         if ret:
             raise Exception('pg_ctl stop failed')
 
-        while True:
-            with open(os.devnull, 'w') as devnull:
-                ret = subprocess.call(['pg_ctl', 'status',
-                                       '-D', self.master_datadir],
-                                       stdout=devnull)
+        with GpStop._SigIntHandler() as handler:
+            while True:
+                if handler.interrupted:
+                    logger.info("can't Ctrl-C")
+                    handler.interrupted = False
 
-            if ret == PG_CTL_STATUS_STOPPED:
-                return
-            if ret != PG_CTL_STATUS_RUNNING:
-                raise Exception('pg_ctl status failed')
+                with open(os.devnull, 'w') as devnull:
+                    ret = subprocess.call(['pg_ctl', 'status',
+                                           '-D', self.master_datadir],
+                                           stdout=devnull)
 
-            # Sleep a little while. Keep this short, since the user can't
-            # interrupt this with SIGINT.
-            time.sleep(0.1)
+                if ret == PG_CTL_STATUS_STOPPED:
+                    return
+                if ret != PG_CTL_STATUS_RUNNING:
+                    raise Exception('pg_ctl status failed')
+
+                # Sleep a little while. Keep this short, since the user can't
+                # interrupt this with SIGINT.
+                time.sleep(0.1)
 
     ######
     def _stop_master(self, masterOnly=False):
