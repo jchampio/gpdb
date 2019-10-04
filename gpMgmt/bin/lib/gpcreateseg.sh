@@ -100,22 +100,11 @@ PARA_EXIT () {
 	fi
 }
 
-ADD_PG_HBA_ENTRIES() {
-    local ADDR
-    local CIDR_ADDR
-
-    for ADDR in "$@"; do
-        # MPP-15889
-        CIDR_ADDR=$(GET_CIDRADDR $ADDR)
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $CIDR_ADDR      trust >> ${GP_DIR}/$PG_HBA"
-    done
-}
-
 CREATE_QES_PRIMARY () {
     LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
     LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTADDRESS"
     # build initdb command, capturing output in ${GP_DIR}.initdb
-    cmd="$EXPORT_LIB_PATH;$INITDB"
+    cmd="$LIB_PATH $INITDB"
     cmd="$cmd -E $ENCODING"
     cmd="$cmd -D $GP_DIR"
     cmd="$cmd --locale=$LOCALE_SETTING"
@@ -127,33 +116,35 @@ CREATE_QES_PRIMARY () {
     fi
     cmd="$cmd --backend_output=$GP_DIR.initdb"
     
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} $cmd >> $LOG_FILE 2>&1
+    $TRUSTED_SHELL ${GP_HOSTADDRESS} "
+        retval=0
+        if ! $cmd; then
+            retval=\$?
+            cat $GP_DIR.initdb
+        fi
+        rm -r $GP_DIR.initdb
+        exit \$retval
+    " >> $LOG_FILE 2>&1
     RETVAL=$?
-    
-    if [ $RETVAL -ne 0 ]; then
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "cat $GP_DIR.initdb" >> $LOG_FILE 2>&1
-    fi
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "rm -f $GP_DIR.initdb" >> $LOG_FILE 2>&1
     BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTADDRESS} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
     BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTADDRESS\""
     PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTADDRESS $GP_DIR"
     
     # Configure postgresql.conf
     LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#MPP Specific parameters\" >> ${GP_DIR}/$PG_CONF"
-    RETVAL=$?
-    PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
-    RETVAL=$?
-    PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-    SED_PG_CONF ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update port number to $GP_PORT"
-    SED_PG_CONF ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update listen address"
-    SED_PG_CONF ${GP_DIR}/$PG_CONF "$CONTENT_ID_TXT" "gp_contentid=${GP_CONTENT}" 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update gp_contentid"
-    SED_PG_CONF ${GP_DIR}/$PG_INTERNAL_CONF "$DBID_TXT" "gp_dbid=${GP_DBID}" 0 $GP_HOSTADDRESS
-    PARA_EXIT $RETVAL "Update gp_dbid"
+    $TRUSTED_SHELL ${GP_HOSTADDRESS} "
+        set -e
+        export GPHOME='$GPHOME'
+        . $FUNCTIONS
+
+        $ECHO '#MPP Specific parameters' >> ${GP_DIR}/$PG_CONF
+        $ECHO '#-----------------------' >> ${GP_DIR}/$PG_CONF
+        SED_PG_CONF ${GP_DIR}/$PG_CONF '$PORT_TXT' port=$GP_PORT 0
+        SED_PG_CONF ${GP_DIR}/$PG_CONF '$LISTEN_ADR_TXT' listen_addresses=\'*\' 0
+        SED_PG_CONF ${GP_DIR}/$PG_CONF '$CONTENT_ID_TXT' 'gp_contentid=${GP_CONTENT}' 0
+        SED_PG_CONF ${GP_DIR}/$PG_INTERNAL_CONF '$DBID_TXT' 'gp_dbid=${GP_DBID}' 0
+    "
+    PARA_EXIT $? "Update ${GP_DIR}/$PG_CONF file"
     
     if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
         LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
@@ -165,61 +156,66 @@ CREATE_QES_PRIMARY () {
             PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
         done
     fi
+
     # Configuring PG_HBA
     LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
+    local -a hbalines
     if [ $HBA_HOSTNAMES -eq 0 ]; then
         for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
         do
             # MPP-15889
             CIDR_MASTER_IP=$(GET_CIDRADDR $MASTER_IP)
-            $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${CIDR_MASTER_IP}	trust >> ${GP_DIR}/$PG_HBA"
-            PARA_EXIT $? "Update $PG_HBA for master IP address ${CIDR_MASTER_IP}"
-          done
-        if [ x"" != x"$STANDBY_HOSTNAME" ];then
-          LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
-          for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
-          do
-          # MPP-15889
-              CIDR_STANDBY_IP=$(GET_CIDRADDR $STANDBY_IP)
-              $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${CIDR_STANDBY_IP}	trust >> ${GP_DIR}/$PG_HBA"
-              PARA_EXIT $? "Update $PG_HBA for master standby address ${CIDR_STANDBY_IP}"
-          done
-        fi
-    
-        # Add all local IPV4 addresses
-        SEGMENT_IPV4_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IPV4_ADDR_LIST_CMD | $GREP inet | $GREP -v \"127.0.0\" | $AWK '{print \\$2}' | $CUT -d'/' -f1"`)
-        ADD_PG_HBA_ENTRIES "${SEGMENT_IPV4_LOCAL_ADDRESS_ALL[@]}"
-    
-        if [ x"" != x"$MIRROR_HOSTADDRESS" ]; then
-          # Add all mirror segments local IPV4 addresses
-          MIRROR_SEGMENT_IPV4_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $MIRROR_HOSTADDRESS "$IPV4_ADDR_LIST_CMD | $GREP inet | $GREP -v \"127.0.0\" | $AWK '{print \\$2}' | $CUT -d'/' -f1"`)
-          ADD_PG_HBA_ENTRIES "${MIRROR_SEGMENT_IPV4_LOCAL_ADDRESS_ALL[@]}"
-        fi
-    
-        # Add all local IPV6 addresses
-        SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \\$2}' | $CUT -d'/' -f1"`)
-        ADD_PG_HBA_ENTRIES "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
-    
-        if [ x"" != x"$MIRROR_HOSTADDRESS" ]; then
-          # Add all mirror segments local IPV6 addresses
-          MIRROR_SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $MIRROR_HOSTADDRESS "$IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \\$2}' | $CUT -d'/' -f1"`)
-          ADD_PG_HBA_ENTRIES "${MIRROR_SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
-        fi
-    else # use hostnames in pg_hba.conf
-        # add localhost
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          all         localhost      trust >> ${GP_DIR}/$PG_HBA"
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${MASTER_HOSTNAME}	trust >> ${GP_DIR}/$PG_HBA"
-        if [ x"" != x"$MIRROR_HOSTADDRESS" ]; then
-          $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $MIRROR_HOSTADDRESS      trust >> ${GP_DIR}/$PG_HBA"
-        fi
-        PARA_EXIT $? "Update $PG_HBA for master IP address ${MASTER_HOSTNAME}"
+            hbalines+=("host	all	all	${CIDR_MASTER_IP}	trust")
+        done
         if [ x"" != x"$STANDBY_HOSTNAME" ];then
             LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
-            $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${STANDBY_HOSTNAME}	trust >> ${GP_DIR}/$PG_HBA"
-            PARA_EXIT $? "Update $PG_HBA for master standby address ${STANDBY_HOSTNAME}"
+            for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
+            do
+                # MPP-15889
+                CIDR_STANDBY_IP=$(GET_CIDRADDR $STANDBY_IP)
+                hbalines+=("host	all	all	${CIDR_STANDBY_IP}	trust")
+            done
         fi
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $GP_HOSTADDRESS      trust >> ${GP_DIR}/$PG_HBA"
+    
+        # Add all local IPv4/6 addresses
+        local -a addrs
+        addrs=($($TRUSTED_SHELL $GP_HOSTADDRESS "
+            $IPV4_ADDR_LIST_CMD | $GREP inet | $GREP -v '127.0.0' | $AWK '{print \$2}' | $CUT -d'/' -f1
+            $IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \$2}' | $CUT -d'/' -f1
+        "))
+
+        if [ x'' != x'$MIRROR_HOSTADDRESS' ]; then
+            # Add all mirror segments local IPv4/6 addresses
+            addrs+=($($TRUSTED_SHELL $MIRROR_HOSTADDRESS "
+                $IPV4_ADDR_LIST_CMD | $GREP inet | $GREP -v '127.0.0' | $AWK '{print \$2}' | $CUT -d'/' -f1
+                $IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \$2}' | $CUT -d'/' -f1
+            "))
+        fi
+
+        for addr in "${addrs[@]}"; do
+            # MPP-15889
+            CIDR_ADDR=$(GET_CIDRADDR $addr)
+            hbalines+=("host     all          $USER_NAME $CIDR_ADDR      trust")
+        done
+    else # use hostnames in pg_hba.conf
+        # add localhost
+        hbalines+=("host     all          all         localhost trust")
+        hbalines+=("host	all	all	${MASTER_HOSTNAME}	trust")
+        if [ x"" != x"$MIRROR_HOSTADDRESS" ]; then
+            hbalines+=("host     all          $USER_NAME $MIRROR_HOSTADDRESS      trust")
+        fi
+        if [ x"" != x"$STANDBY_HOSTNAME" ];then
+            LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
+            hbalines+=("host	all	all	${STANDBY_HOSTNAME}	trust")
+        fi
+        hbalines+=("host     all          $USER_NAME $GP_HOSTADDRESS      trust")
     fi
+
+    for line in "${hbalines[@]}"; do
+        echo $line
+    done | $TRUSTED_SHELL $GP_HOSTADDRESS "cat - >> ${GP_DIR}/$PG_HBA"
+    PARA_EXIT $? "Update $PG_HBA"
+
     LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
 
