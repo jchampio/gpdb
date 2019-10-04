@@ -180,11 +180,17 @@ IN_ARRAY () {
     return 0
 }
 
+LAST_SECONDS=-1
+
 #
 # NOTE: this function is called a lot; try to keep it quick.
 #
 LOG_MSG () {
-		TIMESTAMP=`$DATE +%Y%m%d":"%H":"%M":"%S`
+		local time=$SECONDS
+		if (( $time != $LAST_SECONDS )); then
+			TIMESTAMP=`$DATE +%Y%m%d":"%H":"%M":"%S`
+			LAST_SECONDS=$time
+		fi
 		DISPLAY_TXT=0
 
 		# Check to see if we need to update value of EXIT_STATUS. Strip off
