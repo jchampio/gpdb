@@ -55,6 +55,7 @@ LISTEN_ADR_TXT="listen_addresses"
 CONTENT_ID_TXT="gp_contentid"
 DBID_TXT="gp_dbid"
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
+FSYNC_DATADIR=1
 
 #******************************************************************************
 # Functions
@@ -115,6 +116,7 @@ CREATE_QES_PRIMARY () {
         cmd="$cmd --data-checksums"
     fi
     cmd="$cmd --backend_output=$GP_DIR.initdb"
+    cmd="$cmd --nosync"
     
     $TRUSTED_SHELL ${GP_HOSTADDRESS} "
         retval=0
@@ -222,6 +224,17 @@ CREATE_QES_PRIMARY () {
     done | $TRUSTED_SHELL $GP_HOSTADDRESS "cat - >> ${GP_DIR}/$PG_HBA"
     PARA_EXIT $? "Update $PG_HBA"
 
+    # fsync if the user hasn't suppressed it
+    if (( $FSYNC_DATADIR )); then
+        LOG_MSG "[INFO][$INST_COUNT]:-fsync'ing data directory $GP_DIR on $GP_HOSTADDRESS"
+        cmd="$LIB_PATH $INITDB"
+        cmd="$cmd -D $GP_DIR"
+        cmd="$cmd --sync-only"
+
+        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$cmd" >> $LOG_FILE 2>&1
+        PARA_EXIT $? "to sync $GP_DIR on $GP_HOSTADDRESS"
+    fi
+
     LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
 
@@ -259,17 +272,17 @@ START_QE() {
 # Main Section
 #******************************************************************************
 trap '$ECHO "KILLED:$SEGMENT_TO_CREATE" >> $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-[$INST_COUNT]-Recieved INT or TERM signal" 2' INT TERM
-while getopts ":qp:" opt
+while getopts ":nqp:" opt
 do
 	case $opt in
+		n ) FSYNC_DATADIR=0 ;;
 		q ) unset VERBOSE ;;
-		p ) PG_CONF_ADD_FILE=$OPTARG
-		    shift
-		    shift ;;
+		p ) PG_CONF_ADD_FILE=$OPTARG ;;
 		\? ) echo "Invalid option: -$OPTARG"
 			 exit 1 ;;
 	esac
 done
+shift $(( $OPTIND - 1 ))
 
 # gpcreateseg.sh is called for creating primary and mirror segments.
 # Below is an example for invocation to create a primary

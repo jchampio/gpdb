@@ -79,6 +79,7 @@ INPUT_CONFIG=""
 OUTPUT_CONFIG=""
 GPHOSTCACHELOOKUP=$WORKDIR/lib/gphostcachelookup.py
 STANDBY_RET_CODE=0
+FSYNC_DATADIR=1
 
 #******************************************************************************
 # DCA Specific Variables
@@ -1227,6 +1228,7 @@ CREATE_QD_DB () {
 			cmd="$cmd --data-checksums"
 		fi
 		cmd="$cmd --backend_output=$GP_DIR.initdb"
+		cmd="$cmd --nosync"
 
 		LOG_MSG "[INFO]:-Commencing local $cmd"
 		$cmd >> $LOG_FILE 2>&1
@@ -1284,6 +1286,21 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Creating perfmon directories and configuration file"
 		BUILD_PERFMON $GP_DIR
 		ERROR_CHK $? "create perfmon directories and configuration file" 1
+
+		# fsync if the user hasn't suppressed it
+		if (( $FSYNC_DATADIR )); then
+			cmd="$INITDB"
+			cmd="$cmd -D $GP_DIR"
+			cmd="$cmd --sync-only"
+
+			LOG_MSG "[INFO]:-fsync'ing master data directory"
+			$cmd >> $LOG_FILE 2>&1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ]; then
+				ERROR_EXIT "[FATAL]:- Command $cmd failed with error status $RETVAL, see log file $LOG_FILE for more detail" 2
+			fi
+		fi
+
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
 		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility \
 		-m" start >> /dev/null 2>&1
@@ -1415,10 +1432,15 @@ CREATE_SEGMENT () {
 			export QE_MAX_CONNECT
 			export QE_SHARED_BUFFERS
 			export SEG_PREFIX
-			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				FLAG=""
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ]; then
+				$NOLINE_ECHO ".\c"
+			fi
+			FLAG=""
+			if (( ! $FSYNC_DATADIR )); then
+				FLAG+="-n "
+			fi
 			if [ x"" != x"$PG_CONF_ADD_FILE" ] ; then
-				FLAG="-p $PG_CONF_ADD_FILE"
+				FLAG+="-p $PG_CONF_ADD_FILE "
 			fi
 
 			# PAIR_SEGMENT_INFO contains the corresponding pair with same content id if mirroring is enabled
@@ -1898,6 +1920,7 @@ while getopts ":vaqe:c:l:-:p:m:h:n:s:P:S:b:DB:I:O:" opt
 						"lc-numeric"      ) LCNUMERIC=$VAL ;;
 						"lc-time"         ) LCTIME=$VAL ;;
 						"mirror-mode"     ) SET_MIRROR_MODE $VAL ;;
+						"no-sync"         ) FSYNC_DATADIR=0; VAL=unused ;;
 						"standby-datadir" ) STANDBY_DATADIR=$VAL ;;
 						"help"            ) USAGE "print_doc" ;;
 						"version"         ) print_version ;;
