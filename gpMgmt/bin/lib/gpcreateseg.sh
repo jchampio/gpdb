@@ -132,31 +132,37 @@ CREATE_QES_PRIMARY () {
     
     # Configure postgresql.conf
     LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
-    $TRUSTED_SHELL ${GP_HOSTADDRESS} "
+
+    local -a params
+    if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
+        LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
+        params=($($CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"))
+        for param in "${params[@]}"; do
+            LOG_MSG "[INFO][$INST_COUNT]:-Adding config $param to segment"
+        done
+    fi
+
+    for param in "${params[@]}"; do
+        echo $param
+    done | $TRUSTED_SHELL $GP_HOSTADDRESS "
         set -e
         export GPHOME='$GPHOME'
         . $FUNCTIONS
 
         $ECHO '#MPP Specific parameters' >> ${GP_DIR}/$PG_CONF
         $ECHO '#-----------------------' >> ${GP_DIR}/$PG_CONF
+
         SED_PG_CONF ${GP_DIR}/$PG_CONF '$PORT_TXT' port=$GP_PORT 0
         SED_PG_CONF ${GP_DIR}/$PG_CONF '$LISTEN_ADR_TXT' listen_addresses=\'*\' 0
         SED_PG_CONF ${GP_DIR}/$PG_CONF '$CONTENT_ID_TXT' 'gp_contentid=${GP_CONTENT}' 0
         SED_PG_CONF ${GP_DIR}/$PG_INTERNAL_CONF '$DBID_TXT' 'gp_dbid=${GP_DBID}' 0
+
+        while read -r param; do
+            SED_PG_CONF ${GP_DIR}/$PG_CONF \"\${param%=*}\" \"\$param\" 0
+        done
     "
     PARA_EXIT $? "Update ${GP_DIR}/$PG_CONF file"
     
-    if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
-        LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
-        for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-        do
-            LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
-            SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-            SED_PG_CONF ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTADDRESS
-            PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
-        done
-    fi
-
     # Configuring PG_HBA
     LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
     local -a hbalines
