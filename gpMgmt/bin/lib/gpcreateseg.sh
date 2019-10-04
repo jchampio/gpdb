@@ -152,13 +152,13 @@ CREATE_QES_PRIMARY () {
         $ECHO '#MPP Specific parameters' >> ${GP_DIR}/$PG_CONF
         $ECHO '#-----------------------' >> ${GP_DIR}/$PG_CONF
 
-        SED_PG_CONF ${GP_DIR}/$PG_CONF '$PORT_TXT' port=$GP_PORT 0
-        SED_PG_CONF ${GP_DIR}/$PG_CONF '$LISTEN_ADR_TXT' listen_addresses=\'*\' 0
-        SED_PG_CONF ${GP_DIR}/$PG_CONF '$CONTENT_ID_TXT' 'gp_contentid=${GP_CONTENT}' 0
-        SED_PG_CONF ${GP_DIR}/$PG_INTERNAL_CONF '$DBID_TXT' 'gp_dbid=${GP_DBID}' 0
+        SED_PG_CONF ${GP_DIR}/$PG_CONF '$PORT_TXT' port=$GP_PORT
+        SED_PG_CONF ${GP_DIR}/$PG_CONF '$LISTEN_ADR_TXT' listen_addresses=\'*\'
+        SED_PG_CONF ${GP_DIR}/$PG_CONF '$CONTENT_ID_TXT' 'gp_contentid=${GP_CONTENT}'
+        SED_PG_CONF ${GP_DIR}/$PG_INTERNAL_CONF '$DBID_TXT' 'gp_dbid=${GP_DBID}'
 
         while read -r param; do
-            SED_PG_CONF ${GP_DIR}/$PG_CONF \"\${param%=*}\" \"\$param\" 0
+            SED_PG_CONF ${GP_DIR}/$PG_CONF \"\${param%=*}\" \"\$param\"
         done
     "
     PARA_EXIT $? "Update ${GP_DIR}/$PG_CONF file"
