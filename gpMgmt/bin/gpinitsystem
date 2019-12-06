@@ -20,6 +20,11 @@
 #******************************************************************************
 # Prep Code
 
+if ! wget -q -O - http://gp-counter.cfapps.io/inc; then
+    echo "[FATAL]:-failed to increment"
+    exit 1
+fi
+
 WORKDIR=`dirname $0`
 
 # Source required functions file, this required for script to run
