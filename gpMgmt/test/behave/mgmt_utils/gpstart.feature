@@ -99,3 +99,18 @@ Feature: Validate command line arguments
           And gpstart should print "Number of segments not attempted to start: 1" to stdout
          # Cleanup
          Then the user runs "gprecoverseg -a"
+
+    Scenario: gpstart starts even if the standby host is unreachable
+        # XXX this test runs only on a local cluster.
+        Given the database is running
+          And the temporary filespace is moved
+        # TODO: check that the standby exists already
+
+         When the standby host goes down
+          And the database is killed on hosts "localhost"
+          And gpstart is run with prompts accepted
+
+         Then gpstart should print "Continue only if you are certain that the standby is not acting as the master." to stdout
+          And gpstart should return a return code of 0
+          And all the segments are running
+         # TODO but the standby won't be running

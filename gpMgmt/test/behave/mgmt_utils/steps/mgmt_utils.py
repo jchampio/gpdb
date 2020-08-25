@@ -5727,6 +5727,7 @@ def impl(context, hostnames):
     reset_hosts(hosts, context.temp_base_dir)
 
 @given('the database is killed on hosts "{hostnames}"')
+@when('the database is killed on hosts "{hostnames}"')
 def impl(context, hostnames):
     hosts = hostnames.split(",")
     for host in hosts:
