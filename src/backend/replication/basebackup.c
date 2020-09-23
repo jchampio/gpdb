@@ -1177,12 +1177,33 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	char		pathbuf[MAXPGPATH * 2];
 	struct stat statbuf;
 	int64		size = 0;
+	int64		i;
+
+	/* A list of dirents to sort. */
+	int64		dirent_len = 0;
+	int64		dirent_cap = 128;
+	struct dirent *dirents = palloc(dirent_cap * sizeof(dirents[0]));
 
 	dir = AllocateDir(path);
+
 	while ((de = ReadDir(dir, path)) != NULL)
+	{
+		if (dirent_len == dirent_cap)
+		{
+			/* Reallocate. */
+			dirent_cap = dirent_cap + (dirent_cap / 2);
+			dirents = repalloc_huge(dirents, dirent_cap * sizeof(dirents[0]));
+		}
+
+		dirents[dirent_len++] = *de;
+	}
+
+	for (i = 0; i < dirent_len; ++i)
 	{
 		int			excludeIdx;
 		bool		excludeFound;
+
+		de = &dirents[i];
 
 		/* Skip special stuff */
 		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
@@ -1397,6 +1418,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 					(errmsg("skipping special file \"%s\"", pathbuf)));
 	}
 	FreeDir(dir);
+	pfree(dirents);
 
 	elogif(debug_basebackup && !sizeonly, LOG,
 			"baseabckup send dir -- Sent directory %s", path);
