@@ -1166,6 +1166,8 @@ struct dirent_loc
 {
 	struct dirent *de;
 	uint64 location;
+	struct stat statbuf;
+	bool valid;
 };
 
 static int cmp_loc(const void *a, const void *b)
@@ -1220,6 +1222,8 @@ static uint64 get_loc(int fd, const char *name)
 static void sort_by_extent(struct dirent_loc *dirents, int64 len, int dirfd)
 {
 	int64 i;
+
+	elog(DEBUG1, "getting physical extents for dirent array of size %lld", (long long) len);
 
 	for (i = 0; i < len; ++i)
 	{
@@ -1325,6 +1329,33 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	{
 		dirent_locs[i].de = &dirents[i];
 		dirent_locs[i].location = 0;
+		dirent_locs[i].valid = 0;
+	}
+
+	/*sort_by_inode(dirent_locs, dirent_len);*/
+
+	for (i = 0; i < dirent_len; ++i)
+	{
+		de = dirent_locs[i].de;
+
+		elog(DEBUG1, "stat'ing dirent \"%s\" with inode %llu",
+			 de->d_name, (unsigned long long) de->d_ino);
+
+		snprintf(pathbuf, MAXPGPATH, "%s/%s", path, de->d_name);
+
+		if (lstat(pathbuf, &dirent_locs[i].statbuf) != 0)
+		{
+			if (errno != ENOENT)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file or directory \"%s\": %m",
+								pathbuf)));
+
+			/* If the file went away while scanning, it's not an error. */
+			continue;
+		}
+
+		dirent_locs[i].valid = 1;
 	}
 
 	if ((dfd = dirfd(dir)) < 0)
@@ -1341,7 +1372,11 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		int			excludeIdx;
 		bool		excludeFound;
 
+		if (!dirent_locs[i].valid)
+			continue; /* got ENOENT during lstat() */
+
 		de = dirent_locs[i].de;
+		statbuf = dirent_locs[i].statbuf;
 
 		elog(DEBUG1, "considering dirent \"%s\" with location %llu",
 			 de->d_name, (unsigned long long) dirent_locs[i].location);
@@ -1364,18 +1399,6 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 						 "Try taking another online backup.")));
 
 		snprintf(pathbuf, MAXPGPATH, "%s/%s", path, de->d_name);
-
-		if (lstat(pathbuf, &statbuf) != 0)
-		{
-			if (errno != ENOENT)
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not stat file or directory \"%s\": %m",
-								pathbuf)));
-
-			/* If the file went away while scanning, it's not an error. */
-			continue;
-		}
 
 		/* Scan for directories whose contents should be excluded */
 		excludeFound = false;
