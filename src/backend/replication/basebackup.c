@@ -1275,6 +1275,41 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 
 	while ((de = ReadDir(dir, path)) != NULL)
 	{
+		int			excludeIdx;
+		bool		excludeFound;
+
+		/* Skip special stuff */
+		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+			continue;
+
+		/* Skip temporary files */
+		if (strncmp(de->d_name,
+					PG_TEMP_FILE_PREFIX,
+					strlen(PG_TEMP_FILE_PREFIX)) == 0)
+			continue;
+
+		/* Scan for files that should be excluded */
+		excludeFound = false;
+		for (excludeIdx = 0; excludeFiles[excludeIdx] != NULL; excludeIdx++)
+		{
+			if (strcmp(de->d_name, excludeFiles[excludeIdx]) == 0)
+			{
+				elog(DEBUG1, "file \"%s\" excluded from backup", de->d_name);
+				excludeFound = true;
+				break;
+			}
+		}
+
+		if (excludeFound)
+			continue;
+
+		snprintf(pathbuf, MAXPGPATH, "%s/%s", path, de->d_name);
+
+		/* Skip pg_control here to back up it last */
+		if (strcmp(pathbuf, "./global/pg_control") == 0)
+			continue;
+
+		/* Add this to the list. */
 		if (dirent_len == dirent_cap)
 		{
 			/* Reallocate. */
@@ -1311,16 +1346,6 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		elog(DEBUG1, "considering dirent \"%s\" with location %llu",
 			 de->d_name, (unsigned long long) dirent_locs[i].location);
 
-		/* Skip special stuff */
-		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
-			continue;
-
-		/* Skip temporary files */
-		if (strncmp(de->d_name,
-					PG_TEMP_FILE_PREFIX,
-					strlen(PG_TEMP_FILE_PREFIX)) == 0)
-			continue;
-
 		/*
 		 * Check if the postmaster has signaled us to exit, and abort with an
 		 * error in that case. The error handler further up will call
@@ -1338,26 +1363,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 						 "and should not be used. "
 						 "Try taking another online backup.")));
 
-		/* Scan for files that should be excluded */
-		excludeFound = false;
-		for (excludeIdx = 0; excludeFiles[excludeIdx] != NULL; excludeIdx++)
-		{
-			if (strcmp(de->d_name, excludeFiles[excludeIdx]) == 0)
-			{
-				elog(DEBUG1, "file \"%s\" excluded from backup", de->d_name);
-				excludeFound = true;
-				break;
-			}
-		}
-
-		if (excludeFound)
-			continue;
-
 		snprintf(pathbuf, MAXPGPATH, "%s/%s", path, de->d_name);
-
-		/* Skip pg_control here to back up it last */
-		if (strcmp(pathbuf, "./global/pg_control") == 0)
-			continue;
 
 		if (lstat(pathbuf, &statbuf) != 0)
 		{
