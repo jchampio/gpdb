@@ -12,10 +12,14 @@
  */
 #include "postgres.h"
 
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+
+#include <linux/fiemap.h>
+#include <linux/fs.h>
 
 #include "miscadmin.h"
 #include "access/genam.h"
@@ -1158,6 +1162,87 @@ match_exclude_list(char *path, HTAB *exclude)
 	return found;
 }
 
+struct dirent_loc
+{
+	struct dirent *de;
+	uint64 location;
+};
+
+static int cmp_loc(const void *a, const void *b)
+{
+	const struct dirent_loc *da = a;
+	const struct dirent_loc *db = b;
+
+	if (da->location < db->location)
+	{
+		return -1;
+	}
+	else if (da->location > db->location)
+	{
+		return 1;
+	}
+
+	return 0;
+}
+
+static uint64 get_loc(int fd, const char *name)
+{
+	static char buf[sizeof(struct fiemap) + sizeof(struct fiemap_extent)];
+	static const struct fiemap empty = { 0 };
+
+	struct fiemap *request = (struct fiemap *) buf;
+
+	*request = empty;
+	request->fm_start = 0;
+	request->fm_length = 1;
+	request->fm_extent_count = 1;
+
+	if (ioctl(fd, FS_IOC_FIEMAP, request) < 0)
+	{
+		elog(DEBUG1, "sorting dirents: ioctl(\"%s\"): %m", name);
+		return 0;
+	}
+
+	if (!request->fm_mapped_extents)
+	{
+		elog(DEBUG1, "sorting dirents: \"%s\" has no extents", name);
+		return 0;
+	}
+	else if (request->fm_extents[0].fe_flags & FIEMAP_EXTENT_UNKNOWN)
+	{
+		elog(DEBUG1, "sorting dirents: \"%s\" has unknown extents", name);
+		return 0;
+	}
+
+	return request->fm_extents[0].fe_physical;
+}
+
+static void sort_by_extent(struct dirent_loc *dirents, int64 len, int dirfd)
+{
+	int64 i;
+
+	for (i = 0; i < len; ++i)
+	{
+		int fd;
+		struct dirent_loc *d = &dirents[i];
+		const char *name = d->de->d_name;
+
+		fd = openat(dirfd, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOATIME);
+		if (fd < 0) {
+			elog(DEBUG1, "sorting dirents: openat(\"%s\"): %m", name);
+			continue;
+		}
+
+		d->location = get_loc(fd, name);
+
+		close(fd);
+	}
+
+	elog(DEBUG1, "sorting dirent array of size %lld", (long long) len);
+
+	pg_qsort(dirents, len, sizeof(dirents[0]), cmp_loc);
+}
+
 /*
  * Include all files from the given directory in the output tar stream. If
  * 'sizeonly' is true, we just calculate a total length and return it, without
@@ -1173,6 +1258,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		HTAB *exclude)
 {
 	DIR		   *dir;
+	int			dfd;
 	struct dirent *de;
 	char		pathbuf[MAXPGPATH * 2];
 	struct stat statbuf;
@@ -1183,6 +1269,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	int64		dirent_len = 0;
 	int64		dirent_cap = 128;
 	struct dirent *dirents = palloc(dirent_cap * sizeof(dirents[0]));
+	struct dirent_loc *dirent_locs;
 
 	dir = AllocateDir(path);
 
@@ -1198,12 +1285,31 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		dirents[dirent_len++] = *de;
 	}
 
+	dirent_locs = palloc(dirent_len * sizeof(dirent_locs[0]));
+	for (i = 0; i < dirent_len; ++i)
+	{
+		dirent_locs[i].de = &dirents[i];
+		dirent_locs[i].location = 0;
+	}
+
+	if ((dfd = dirfd(dir)) < 0)
+	{
+		elog(DEBUG1, "unable to sort dirents: dirfd(\"%s\"): %m", path);
+	}
+	else
+	{
+		sort_by_extent(dirent_locs, dirent_len, dfd);
+	}
+
 	for (i = 0; i < dirent_len; ++i)
 	{
 		int			excludeIdx;
 		bool		excludeFound;
 
-		de = &dirents[i];
+		de = dirent_locs[i].de;
+
+		elog(DEBUG1, "considering dirent \"%s\" with location %llu",
+			 de->d_name, (unsigned long long) dirent_locs[i].location);
 
 		/* Skip special stuff */
 		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
@@ -1419,6 +1525,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	}
 	FreeDir(dir);
 	pfree(dirents);
+	pfree(dirent_locs);
 
 	elogif(debug_basebackup && !sizeonly, LOG,
 			"baseabckup send dir -- Sent directory %s", path);
