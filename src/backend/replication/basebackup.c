@@ -1581,23 +1581,30 @@ static bool
 sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
 		 bool missing_ok)
 {
-	FILE	   *fp;
+	FILE	   *fp = NULL;
 	char		buf[TAR_SEND_SIZE];
 	size_t		cnt;
 	pgoff_t		len = 0;
 	size_t		pad;
 
-	fp = AllocateFile(readfilename, "rb");
-	if (fp == NULL)
+	/* optimization: don't open up an empty file if it's okay for it not to exist. */
+	if (statbuf->st_size || !missing_ok)
 	{
-		if (errno == ENOENT && missing_ok)
-			return false;
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\": %m", readfilename)));
+		fp = AllocateFile(readfilename, "rb");
+		if (fp == NULL)
+		{
+			if (errno == ENOENT && missing_ok)
+				return false;
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not open file \"%s\": %m", readfilename)));
+		}
 	}
 
 	_tarWriteHeader(tarfilename, NULL, statbuf);
+
+	if (!fp)
+		return true;
 
 	while ((cnt = fread(buf, 1, Min(sizeof(buf), statbuf->st_size - len), fp)) > 0)
 	{
