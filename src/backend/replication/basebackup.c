@@ -1239,6 +1239,20 @@ static void sort_by_extent(struct dirent_loc *dirents, int64 len, int dirfd)
 
 		d->location = get_loc(fd, name);
 
+		if (d->location)
+		{
+			/*
+			 * Tell the kernel we'll need this file soon.
+			 * XXX will this help us get maximum parallelization on filesystems that can use it?
+			 * Or will we thrash the cache instead?
+			 */
+			if (posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED) != 0)
+			{
+				/* XXX sources differ on whether posix_fadvise sets errno or returns it */
+				elog(WARNING, "unable to fadvise() \"%s\": %m", name);
+			}
+		}
+
 		close(fd);
 	}
 
