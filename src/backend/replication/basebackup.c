@@ -69,10 +69,22 @@ typedef struct
 	HTAB	   *exclude;
 } basebackup_options;
 
+struct file_ring
+{
+	struct dirent_loc *dirent_locs;
+	const char *path;
+	int64 dirent_len;
+	int64 last;
+	int64 open;
+	int64 cap;
+};
 
 static bool match_exclude_list(char *path, HTAB *exclude);
+static void sendFp(FILE *fp, char *tarfilename, struct stat *statbuf);
 static int64 sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces, HTAB *exclude);
 static int64 sendTablespace(char *path, bool sizeonly);
+static FILE *nextFile(int64 i, struct file_ring *ring);
+static void fillRing(int64 i, struct file_ring *ring);
 static bool sendFile(char *readfilename, char *tarfilename,
 		 struct stat * statbuf, bool missing_ok);
 static void sendFileWithContent(const char *filename, const char *content);
@@ -1167,6 +1179,7 @@ struct dirent_loc
 	struct dirent *de;
 	uint64 location;
 	struct stat statbuf;
+	FILE *fp;
 	bool valid;
 };
 
@@ -1309,6 +1322,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	int64		dirent_cap = 128;
 	struct dirent *dirents = palloc(dirent_cap * sizeof(dirents[0]));
 	struct dirent_loc *dirent_locs;
+	struct file_ring ring = { 0 };
 
 	dir = AllocateDir(path);
 
@@ -1366,6 +1380,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	{
 		dirent_locs[i].de = &dirents[i];
 		dirent_locs[i].location = 0;
+		dirent_locs[i].fp = NULL;
 		dirent_locs[i].valid = 0;
 	}
 
@@ -1404,6 +1419,11 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	else if (!sizeonly)
 	{
 		sort_by_extent(dirent_locs, dirent_len, dfd);
+
+		ring.path = path;
+		ring.dirent_locs = dirent_locs;
+		ring.dirent_len = dirent_len;
+		ring.cap = 256;
 	}
 
 	for (i = 0; i < dirent_len; ++i)
@@ -1575,10 +1595,20 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 		else if (S_ISREG(statbuf.st_mode))
 		{
 			bool		sent = false;
+			FILE *fp;
 
 			if (!sizeonly)
-				sent = sendFile(pathbuf, pathbuf + basepathlen + 1, &statbuf,
-								true);
+			{
+				fillRing(i, &ring);
+				fp = nextFile(i, &ring);
+
+				sendFp(fp, pathbuf + basepathlen + 1, &statbuf);
+
+				if (fp)
+					FreeFile(fp);
+
+				sent = true;
+			}
 
 			if (sent || sizeonly)
 			{
@@ -1704,6 +1734,59 @@ sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
 		FreeFile(fp);
 
 	return true;
+}
+
+static void
+fillRing(int64 i, struct file_ring *ring)
+{
+	char		pathbuf[MAXPGPATH];
+
+	while ((ring->last < ring->dirent_len) && (ring->open < ring->cap))
+	{
+		struct dirent_loc *d;
+
+		d = &ring->dirent_locs[ring->last++];
+
+		if (!d->valid)
+			continue; /* lstat() returned ENOENT */
+		if (!S_ISREG(d->statbuf.st_mode))
+			continue; /* not a regular file to send */
+		if (!d->statbuf.st_size)
+			continue; /* don't open up an empty file */
+
+		snprintf(pathbuf, MAXPGPATH, "%s/%s", ring->path, d->de->d_name);
+
+		d->fp = AllocateFile(pathbuf, "rb");
+
+		if (d->fp == NULL)
+		{
+			if (errno != ENOENT)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not open file \"%s\": %m", pathbuf)));
+			continue;
+		}
+
+		ring->open++;
+	}
+
+	if (ring->last <= i)
+	{
+		elog(ERROR, "failed to fill to index %lld (at %lld with %lld open)",
+			(long long) i, (long long) ring->last, (long long) ring->open);
+	}
+}
+
+static FILE *
+nextFile(int64 i, struct file_ring *ring)
+{
+	FILE	   *next;
+
+	next = ring->dirent_locs[i].fp;
+	if (next)
+		ring->open--;
+
+	return next;
 }
 
 
