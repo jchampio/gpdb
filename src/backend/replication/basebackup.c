@@ -1401,7 +1401,7 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	{
 		elog(DEBUG1, "unable to sort dirents: dirfd(\"%s\"): %m", path);
 	}
-	else
+	else if (!sizeonly)
 	{
 		sort_by_extent(dirent_locs, dirent_len, dfd);
 	}
