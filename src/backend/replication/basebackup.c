@@ -1607,43 +1607,21 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
  * Copied from pg_dump, but modified to work with libpq for sending
  */
 
-
 /*
- * Given the member, write the TAR header & send the file.
- *
- * If 'missing_ok' is true, will not throw an error if the file is not found.
- *
- * Returns true if the file was successfully sent, false if 'missing_ok',
- * and the file did not exist.
+ * If fp is NULL, assume an empty file; only the tar header will be sent.
  */
-static bool
-sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
-		 bool missing_ok)
+static void
+sendFp(FILE *fp, char *tarfilename, struct stat *statbuf)
 {
-	FILE	   *fp = NULL;
 	char		buf[TAR_SEND_SIZE];
 	size_t		cnt;
 	pgoff_t		len = 0;
 	size_t		pad;
 
-	/* optimization: don't open up an empty file if it's okay for it not to exist. */
-	if (statbuf->st_size || !missing_ok)
-	{
-		fp = AllocateFile(readfilename, "rb");
-		if (fp == NULL)
-		{
-			if (errno == ENOENT && missing_ok)
-				return false;
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not open file \"%s\": %m", readfilename)));
-		}
-	}
-
 	_tarWriteHeader(tarfilename, NULL, statbuf);
 
 	if (!fp)
-		return true;
+		return;
 
 	while ((cnt = fread(buf, 1, Min(sizeof(buf), statbuf->st_size - len), fp)) > 0)
 	{
@@ -1689,8 +1667,41 @@ sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
 		MemSet(buf, 0, pad);
 		pq_putmessage('d', buf, pad);
 	}
+}
 
-	FreeFile(fp);
+
+/*
+ * Given the member, write the TAR header & send the file.
+ *
+ * If 'missing_ok' is true, will not throw an error if the file is not found.
+ *
+ * Returns true if the file was successfully sent, false if 'missing_ok',
+ * and the file did not exist.
+ */
+static bool
+sendFile(char *readfilename, char *tarfilename, struct stat * statbuf,
+		 bool missing_ok)
+{
+	FILE	   *fp = NULL;
+
+	/* optimization: don't open up an empty file if it's okay for it not to exist. */
+	if (statbuf->st_size || !missing_ok)
+	{
+		fp = AllocateFile(readfilename, "rb");
+		if (fp == NULL)
+		{
+			if (errno == ENOENT && missing_ok)
+				return false;
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not open file \"%s\": %m", readfilename)));
+		}
+	}
+
+	sendFp(fp, tarfilename, statbuf);
+
+	if (fp)
+		FreeFile(fp);
 
 	return true;
 }
