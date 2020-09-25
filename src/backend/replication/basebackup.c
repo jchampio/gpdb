@@ -1231,6 +1231,8 @@ static void sort_by_extent(struct dirent_loc *dirents, int64 len, int dirfd)
 		struct dirent_loc *d = &dirents[i];
 		const char *name = d->de->d_name;
 
+		CHECK_FOR_INTERRUPTS();
+
 		fd = openat(dirfd, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOATIME);
 		if (fd < 0) {
 			elog(DEBUG1, "sorting dirents: openat(\"%s\"): %m", name);
@@ -1306,6 +1308,8 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 					strlen(PG_TEMP_FILE_PREFIX)) == 0)
 			continue;
 
+		CHECK_FOR_INTERRUPTS();
+
 		/* Scan for files that should be excluded */
 		excludeFound = false;
 		for (excludeIdx = 0; excludeFiles[excludeIdx] != NULL; excludeIdx++)
@@ -1351,6 +1355,8 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces,
 	for (i = 0; i < dirent_len; ++i)
 	{
 		de = dirent_locs[i].de;
+
+		CHECK_FOR_INTERRUPTS();
 
 		elog(DEBUG1, "stat'ing dirent \"%s\" with inode %llu",
 			 de->d_name, (unsigned long long) de->d_ino);
