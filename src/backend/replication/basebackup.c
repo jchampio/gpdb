@@ -1241,6 +1241,29 @@ static void sort_by_extent(struct dirent_loc *dirents, int64 len, int dirfd)
 
 		d->location = get_loc(fd, name);
 
+		close(fd);
+	}
+
+	elog(DEBUG1, "sorting dirent array of size %lld", (long long) len);
+
+	pg_qsort(dirents, len, sizeof(dirents[0]), cmp_loc);
+
+	elog(DEBUG1, "fadvising dirent array of size %lld", (long long) len);
+
+	for (i = 0; i < len; ++i)
+	{
+		int fd;
+		struct dirent_loc *d = &dirents[i];
+		const char *name = d->de->d_name;
+
+		CHECK_FOR_INTERRUPTS();
+
+		fd = openat(dirfd, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOATIME);
+		if (fd < 0) {
+			elog(DEBUG1, "fadvising dirents: openat(\"%s\"): %m", name);
+			continue;
+		}
+
 		if (d->location)
 		{
 			/*
@@ -1257,10 +1280,6 @@ static void sort_by_extent(struct dirent_loc *dirents, int64 len, int dirfd)
 
 		close(fd);
 	}
-
-	elog(DEBUG1, "sorting dirent array of size %lld", (long long) len);
-
-	pg_qsort(dirents, len, sizeof(dirents[0]), cmp_loc);
 }
 
 /*
